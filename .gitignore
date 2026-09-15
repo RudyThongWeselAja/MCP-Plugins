@@ -1,0 +1,33 @@
+.env
+.env.*
+!.env.example
+
+bin/
+obj/
+
+.vscode/
+.idea/
+
+*.user
+*.suo
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android
+local.properties
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+
+# Kotlin
+*.class
+
+# OS
+.DS_Store
+Thumbs.db
