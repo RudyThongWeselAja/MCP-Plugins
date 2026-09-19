@@ -10,7 +10,7 @@ public class CreatePaymentRequest
     [JsonPropertyName("currency")]
     public string Currency { get; set; } = string.Empty;
 
-    [JsonIgnore]
+    [JsonPropertyName("paymentMethod")]
     public string PaymentMethod { get; set; } = string.Empty;
 
     [JsonPropertyName("paymentChannel")]
@@ -36,7 +36,4 @@ public class CreatePaymentRequest
 
     [JsonPropertyName("redirectUrl")]
     public string RedirectUrl { get; set; } = string.Empty;
-
-    [JsonPropertyName("metadata")]
-    public Dictionary<string, object>? Metadata { get; set; }
 }

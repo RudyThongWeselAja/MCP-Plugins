@@ -4,6 +4,7 @@ public enum XenithPayImplementation
 {
     CSharp,
     PHP,
+    WooCommerce,
     Python,
     Odoo
 }

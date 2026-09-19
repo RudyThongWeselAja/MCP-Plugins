@@ -17,11 +17,12 @@ public static class XenithPayTools
         "Checks whether XenithPay is active using the selected implementation.")]
     public static async Task<string> IsActive(
         [Description(
-            "Implementation to use: CSharp, PHP, Python, or Odoo")]
+            "Implementation to use: CSharp, PHP, WooCommerce, Python, or Odoo")]
         XenithPayImplementation implementation,
 
         CSharpMcpClient csharpClient,
         PhpXenithPayClient phpClient,
+        WooCommerceXenithPayClient wooCommerceClient,
         PythonXenithPayClient pythonClient,
         OdooXenithPayClient odooClient,
 
@@ -34,6 +35,7 @@ public static class XenithPayTools
                 null,
                 csharpClient,
                 phpClient,
+                wooCommerceClient,
                 pythonClient,
                 odooClient,
                 cancellationToken);
@@ -47,11 +49,12 @@ public static class XenithPayTools
         "Returns XenithPay payment method information using the selected implementation.")]
     public static async Task<string> GetPaymentMethod(
         [Description(
-            "Implementation to use: CSharp, PHP, Python, or Odoo")]
+            "Implementation to use: CSharp, PHP, WooCommerce, Python, or Odoo")]
         XenithPayImplementation implementation,
 
         CSharpMcpClient csharpClient,
         PhpXenithPayClient phpClient,
+        WooCommerceXenithPayClient wooCommerceClient,
         PythonXenithPayClient pythonClient,
         OdooXenithPayClient odooClient,
 
@@ -64,6 +67,7 @@ public static class XenithPayTools
                 null,
                 csharpClient,
                 phpClient,
+                wooCommerceClient,
                 pythonClient,
                 odooClient,
                 cancellationToken);
@@ -77,7 +81,7 @@ public static class XenithPayTools
         "Creates a XenithPay payment using the selected implementation.")]
     public static async Task<string> CreatePayment(
         [Description(
-            "Implementation to use: CSharp, PHP, Python, or Odoo")]
+            "Implementation to use: CSharp, PHP, WooCommerce, Python, or Odoo")]
         XenithPayImplementation implementation,
 
         [Description(
@@ -118,6 +122,7 @@ public static class XenithPayTools
 
         CSharpMcpClient csharpClient,
         PhpXenithPayClient phpClient,
+        WooCommerceXenithPayClient wooCommerceClient,
         PythonXenithPayClient pythonClient,
         OdooXenithPayClient odooClient,
 
@@ -181,6 +186,7 @@ public static class XenithPayTools
                 arguments,
                 csharpClient,
                 phpClient,
+                wooCommerceClient,
                 pythonClient,
                 odooClient,
                 cancellationToken);
@@ -194,16 +200,11 @@ public static class XenithPayTools
         IReadOnlyDictionary<string, object?>? arguments,
         CSharpMcpClient csharpClient,
         PhpXenithPayClient phpClient,
+        WooCommerceXenithPayClient wooCommerceClient,
         PythonXenithPayClient pythonClient,
         OdooXenithPayClient odooClient,
         CancellationToken cancellationToken)
     {
-        Console.Error.WriteLine(
-            $"[CENTRAL] Implementation: {implementation}");
-
-        Console.Error.WriteLine(
-            $"[CENTRAL] Tool: {tool}");
-
         switch (implementation)
         {
             case XenithPayImplementation.CSharp:
@@ -235,6 +236,16 @@ public static class XenithPayTools
                 {
                     var result =
                         await phpClient.CallAsync(
+                            tool,
+                            arguments);
+
+                    return result.GetRawText();
+                }
+
+            case XenithPayImplementation.WooCommerce:
+                {
+                    var result =
+                        await wooCommerceClient.CallAsync(
                             tool,
                             arguments);
 

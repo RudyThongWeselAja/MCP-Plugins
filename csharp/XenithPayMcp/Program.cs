@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ModelContextProtocol.Server;
 using XenithPayMcp.Configuration;
 using XenithPayMcp.Security;
 using XenithPayMcp.Services;
@@ -26,7 +25,7 @@ var weselAjaUrlValue =
 
 var enabled =
     !string.Equals(
-        enabledValue,
+        enabledValue?.Trim(),
         "false",
         StringComparison.OrdinalIgnoreCase);
 
@@ -37,29 +36,35 @@ var options =
             enabled,
 
         Title =
-            Environment.GetEnvironmentVariable(
-                "XENITH_TITLE")
-            ?? "XenithPay",
+            (
+                Environment.GetEnvironmentVariable(
+                    "XENITH_TITLE")
+                ?? "XenithPay"
+            ).Trim(),
 
         Description =
-            Environment.GetEnvironmentVariable(
-                "XENITH_DESCRIPTION")
-            ?? "Pay securely using XenithPay payment gateway.",
+            (
+                Environment.GetEnvironmentVariable(
+                    "XENITH_DESCRIPTION")
+                ?? "Pay securely using XenithPay payment gateway."
+            ).Trim(),
 
         Icon =
             "",
 
         ApiKey =
-            apiKeyValue
+            apiKeyValue?.Trim()
             ?? string.Empty,
 
         SecretKey =
-            secretKeyValue
+            secretKeyValue?.Trim()
             ?? string.Empty,
 
         ApiUrl =
-            weselAjaUrlValue
-            ?? "https://sandbox.checkout.weselaja.id"
+            (
+                weselAjaUrlValue?.Trim()
+                ?? "https://sandbox.checkout.weselaja.id"
+            ).Trim()
     };
 
 builder.Services.AddSingleton(
@@ -69,7 +74,19 @@ builder.Services.AddSingleton<
     SignatureGenerator>();
 
 builder.Services
-    .AddHttpClient<XenithPayClient>();
+    .AddHttpClient<XenithPayClient>()
+    .ConfigurePrimaryHttpMessageHandler(() =>
+        new HttpClientHandler
+        {
+            UseProxy =
+                false,
+
+            AutomaticDecompression =
+                System.Net.DecompressionMethods.None,
+
+            MaxConnectionsPerServer =
+                1
+        });
 
 builder.Services.AddSingleton<
     XenithPayBlocksService>();

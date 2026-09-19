@@ -2,32 +2,34 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-namespace XenithPayMcpServer.Client;
+namespace XenithPayMcpServer.Clients;
 
-public class PythonXenithPayClient
+public class WooCommerceXenithPayClient
 {
-    private readonly string _pythonPath;
+    private readonly string _phpPath;
     private readonly string _scriptPath;
 
-    public PythonXenithPayClient()
+    public WooCommerceXenithPayClient()
     {
-        _pythonPath =
+        _phpPath =
             Environment.GetEnvironmentVariable(
-                "XENITH_PYTHON_EXECUTABLE")
-            ?? "python";
+                "XENITH_PHP_EXECUTABLE")
+            ?? "php";
 
         _scriptPath =
-            Path.GetFullPath(
+            Environment.GetEnvironmentVariable(
+                "XENITH_WOOCOMMERCE_PHP_SCRIPT")
+            ?? Path.GetFullPath(
                 Path.Combine(
                     AppContext.BaseDirectory,
-                    "../../../../../python/xenithpay_python/xenithpay.py"
+                    "../../../../../php/WooCommerceWeselAja/mcp/xenithpay.php"
                 )
             );
 
         if (!File.Exists(_scriptPath))
         {
             throw new FileNotFoundException(
-                "Python XenithPay script was not found.",
+                "WooCommerce XenithPay PHP script was not found.",
                 _scriptPath
             );
         }
@@ -38,24 +40,21 @@ public class PythonXenithPayClient
         object? arguments = null,
         CancellationToken cancellationToken = default)
     {
-        var payload = new
+        var request = new
         {
             tool,
             arguments
         };
 
         var json =
-            JsonSerializer.Serialize(payload);
+            JsonSerializer.Serialize(request);
 
         var startInfo =
             new ProcessStartInfo
             {
-                FileName = _pythonPath,
-
+                FileName = _phpPath,
                 WorkingDirectory =
-                    Path.GetDirectoryName(
-                        _scriptPath
-                    )!,
+                    Path.GetDirectoryName(_scriptPath)!,
 
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -64,16 +63,17 @@ public class PythonXenithPayClient
                 UseShellExecute = false,
                 CreateNoWindow = true,
 
+                StandardInputEncoding =
+                    new UTF8Encoding(false),
+
                 StandardOutputEncoding =
-                    Encoding.UTF8,
+                    new UTF8Encoding(false),
 
                 StandardErrorEncoding =
-                    Encoding.UTF8
+                    new UTF8Encoding(false)
             };
 
-        startInfo.ArgumentList.Add(
-            _scriptPath
-        );
+        startInfo.ArgumentList.Add(_scriptPath);
 
         using var process =
             new Process
@@ -84,24 +84,12 @@ public class PythonXenithPayClient
         if (!process.Start())
         {
             throw new InvalidOperationException(
-                "Unable to start Python process."
+                "Unable to start WooCommerce PHP process."
             );
         }
 
-        var inputBytes =
-            Encoding.UTF8.GetBytes(
-                json + "\n"
-            );
-
-        await process.StandardInput.BaseStream.WriteAsync(
-            inputBytes,
-            cancellationToken
-        );
-
-        await process.StandardInput.BaseStream.FlushAsync(
-            cancellationToken
-        );
-
+        await process.StandardInput.WriteAsync(json);
+        await process.StandardInput.FlushAsync();
         process.StandardInput.Close();
 
         var stdoutTask =
@@ -114,62 +102,58 @@ public class PythonXenithPayClient
                 cancellationToken
             );
 
-        await process.WaitForExitAsync(
-            cancellationToken
-        );
+        await process.WaitForExitAsync(cancellationToken);
 
-        var stdout =
-            await stdoutTask;
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
 
-        var stderr =
-            await stderrTask;
-
-        if (!string.IsNullOrWhiteSpace(stderr))
-        {
-            Console.Error.WriteLine();
-            Console.Error.WriteLine(
-                "========== PYTHON STDERR =========="
-            );
-            Console.Error.WriteLine(
-                stderr
-            );
-            Console.Error.WriteLine(
-                "=================================="
-            );
-            Console.Error.Flush();
-        }
-
-        if (process.ExitCode != 0)
+        if (string.IsNullOrWhiteSpace(stdout))
         {
             throw new InvalidOperationException(
-                "Python process failed. " +
+                "WooCommerce PHP process returned empty output. " +
                 $"Exit code: {process.ExitCode}. " +
                 $"Error: {stderr}"
             );
         }
 
-        if (string.IsNullOrWhiteSpace(stdout))
-        {
-            throw new InvalidOperationException(
-                "Python process returned empty output."
-            );
-        }
+        JsonElement result;
 
         try
         {
             using var document =
                 JsonDocument.Parse(stdout);
 
-            return document.RootElement.Clone();
+            result =
+                document.RootElement.Clone();
         }
         catch (JsonException exception)
         {
             throw new InvalidOperationException(
-                "Python returned invalid JSON. " +
+                "WooCommerce PHP returned invalid JSON. " +
                 $"Output: {stdout}. " +
                 $"STDERR: {stderr}",
                 exception
             );
         }
+
+        if (process.ExitCode != 0)
+        {
+            var errorMessage =
+                result.TryGetProperty(
+                    "error",
+                    out var errorProperty
+                )
+                && errorProperty.ValueKind != JsonValueKind.Null
+                    ? errorProperty.GetString()
+                    : stderr;
+
+            throw new InvalidOperationException(
+                "WooCommerce PHP process failed. " +
+                $"Exit code: {process.ExitCode}. " +
+                $"Error: {errorMessage}"
+            );
+        }
+
+        return result;
     }
 }

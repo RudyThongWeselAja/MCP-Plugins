@@ -31,6 +31,6 @@ class PaymentProvider(models.Model):
         string="API URL",
         required_if_provider="xenithpay",
         copy=False,
-        default="https://openapi.sandbox.xenithpay.com",
+        default="https://sandbox.checkout.weselaja.id",
         help="XenithPay API base URL.",
     )

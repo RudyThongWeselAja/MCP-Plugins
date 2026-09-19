@@ -6,21 +6,12 @@ if (!defined('ABSPATH')) {
 
 define('WC_XENITH_MAIN_FILE', __FILE__);
 
-/*
- * ==========================================
- * XenithPay MCP Audit Logger
- * ==========================================
- */
-
 $audit_file = plugin_dir_path(__FILE__) . 'mcp/audit.php';
 
 if (file_exists($audit_file)) {
     require_once $audit_file;
 }
 
-/*
- * Create audit table when plugin is activated.
- */
 if (class_exists('XenithPay_Mcp_Audit')) {
     register_activation_hook(
         __FILE__,
@@ -28,21 +19,7 @@ if (class_exists('XenithPay_Mcp_Audit')) {
     );
 }
 
-
-/*
- * ==========================================
- * XenithPay Initialization
- * ==========================================
- */
-
 add_action('plugins_loaded', 'wc_xenithpay_init', 11);
-
-
-/*
- * ==========================================
- * Capture raw webhook body
- * ==========================================
- */
 
 add_action(
     'woocommerce_api_wc_xenith_callback',
@@ -55,13 +32,6 @@ add_action(
     1
 );
 
-
-/*
- * ==========================================
- * Handle webhook
- * ==========================================
- */
-
 add_action(
     'woocommerce_api_wc_xenith_callback',
     'wc_xenith_handle_webhook',
@@ -69,11 +39,6 @@ add_action(
 );
 
 
-/*
- * ==========================================
- * Initialize XenithPay Gateway
- * ==========================================
- */
 
 function wc_xenithpay_init()
 {
@@ -104,11 +69,6 @@ function wc_xenithpay_init()
         );
     }
 
-
-    /*
-     * WooCommerce check
-     */
-
     if (!class_exists('WC_Payment_Gateway')) {
 
         add_action(
@@ -122,11 +82,6 @@ function wc_xenithpay_init()
 
         return;
     }
-
-
-    /*
-     * Gateway class file
-     */
 
     $file =
         plugin_dir_path(__FILE__) .
@@ -157,17 +112,7 @@ function wc_xenithpay_init()
         return;
     }
 
-
-    /*
-     * Load gateway class
-     */
-
     require_once $file;
-
-
-    /*
-     * Verify gateway class exists
-     */
 
     if (!class_exists('WC_Gateway_XenithPay')) {
 
@@ -190,11 +135,6 @@ function wc_xenithpay_init()
 
         return;
     }
-
-
-    /*
-     * Register payment gateway
-     */
 
     add_filter(
         'woocommerce_payment_gateways',

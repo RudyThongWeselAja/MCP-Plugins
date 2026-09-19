@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-namespace XenithPayMcpServer.Client;
+namespace XenithPayMcpServer.Clients;
 
 public class PhpXenithPayClient
 {
@@ -16,24 +16,29 @@ public class PhpXenithPayClient
                 "XENITH_PHP_EXECUTABLE")
             ?? "php";
 
-        _scriptPath = Path.GetFullPath(
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "../../../../../php/WooCommerceWeselAja/mcp/xenithpay.php"
-            )
-        );
+        _scriptPath =
+            Environment.GetEnvironmentVariable(
+                "XENITH_PHP_SCRIPT")
+            ?? Path.GetFullPath(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "../../../../../php/XenithPayPhp/cli.php"
+                )
+            );
 
         if (!File.Exists(_scriptPath))
         {
             throw new FileNotFoundException(
-                "PHP XenithPay script was not found.",
-                _scriptPath);
+                "PHP XenithPay standalone script was not found.",
+                _scriptPath
+            );
         }
     }
 
     public async Task<JsonElement> CallAsync(
         string tool,
-        object? arguments = null)
+        object? arguments = null,
+        CancellationToken cancellationToken = default)
     {
         var request = new
         {
@@ -49,12 +54,10 @@ public class PhpXenithPayClient
             {
                 FileName = _phpPath,
 
-                Arguments =
-                    $"\"{_scriptPath}\"",
-
                 WorkingDirectory =
                     Path.GetDirectoryName(
-                        _scriptPath)!,
+                        _scriptPath
+                    )!,
 
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -73,6 +76,10 @@ public class PhpXenithPayClient
                     new UTF8Encoding(false)
             };
 
+        startInfo.ArgumentList.Add(
+            _scriptPath
+        );
+
         using var process =
             new Process
             {
@@ -82,23 +89,31 @@ public class PhpXenithPayClient
         if (!process.Start())
         {
             throw new InvalidOperationException(
-                "Unable to start PHP process.");
+                "Unable to start PHP standalone process."
+            );
         }
 
         await process.StandardInput.WriteAsync(
-            json);
+            json
+        );
 
         await process.StandardInput.FlushAsync();
 
         process.StandardInput.Close();
 
         var stdoutTask =
-            process.StandardOutput.ReadToEndAsync();
+            process.StandardOutput.ReadToEndAsync(
+                cancellationToken
+            );
 
         var stderrTask =
-            process.StandardError.ReadToEndAsync();
+            process.StandardError.ReadToEndAsync(
+                cancellationToken
+            );
 
-        await process.WaitForExitAsync();
+        await process.WaitForExitAsync(
+            cancellationToken
+        );
 
         var stdout =
             await stdoutTask;
@@ -106,12 +121,20 @@ public class PhpXenithPayClient
         var stderr =
             await stderrTask;
 
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            Console.Error.Write(
+                stderr
+            );
+        }
+
         if (string.IsNullOrWhiteSpace(stdout))
         {
             throw new InvalidOperationException(
-                "PHP process returned empty output. " +
+                "PHP standalone process returned empty output. " +
                 $"Exit code: {process.ExitCode}. " +
-                $"Error: {stderr}");
+                $"Error: {stderr}"
+            );
         }
 
         JsonElement result;
@@ -127,10 +150,11 @@ public class PhpXenithPayClient
         catch (JsonException error)
         {
             throw new InvalidOperationException(
-                "PHP returned invalid JSON. " +
+                "PHP standalone returned invalid JSON. " +
                 $"Output: {stdout}. " +
                 $"STDERR: {stderr}",
-                error);
+                error
+            );
         }
 
         if (process.ExitCode != 0)
@@ -138,16 +162,18 @@ public class PhpXenithPayClient
             var errorMessage =
                 result.TryGetProperty(
                     "error",
-                    out var errorProperty)
+                    out var errorProperty
+                )
                 && errorProperty.ValueKind !=
                     JsonValueKind.Null
                     ? errorProperty.GetString()
                     : stderr;
 
             throw new InvalidOperationException(
-                "PHP process failed. " +
+                "PHP standalone process failed. " +
                 $"Exit code: {process.ExitCode}. " +
-                $"Error: {errorMessage}");
+                $"Error: {errorMessage}"
+            );
         }
 
         return result;

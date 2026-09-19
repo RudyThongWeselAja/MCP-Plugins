@@ -62,8 +62,8 @@ public class CreatePaymentResponse
     [JsonPropertyName("redirectUrl")]
     public string? RedirectUrl { get; set; }
 
-    [JsonPropertyName("metadata")]
-    public JsonElement? Metadata { get; set; }
+    // [JsonPropertyName("metadata")]
+    // public JsonElement? Metadata { get; set; }
 
     [JsonPropertyName("error")]
     public string? Error { get; set; }

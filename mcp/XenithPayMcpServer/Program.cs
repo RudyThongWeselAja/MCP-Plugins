@@ -60,14 +60,18 @@ static async Task RunStdioServer(
 
     Console.Error.WriteLine();
     Console.Error.WriteLine(
-        "XenithPay MCP Server");
+        "XenithPay MCP Server"
+    );
     Console.Error.WriteLine(
-        "====================");
+        "===================="
+    );
     Console.Error.WriteLine();
     Console.Error.WriteLine(
-        "Transport : STDIO");
+        "Transport : STDIO"
+    );
     Console.Error.WriteLine(
-        "Status    : Ready");
+        "Status    : Ready"
+    );
     Console.Error.WriteLine();
 
     await builder
@@ -133,18 +137,24 @@ static async Task RunHttpServer(
 
     Console.Error.WriteLine();
     Console.Error.WriteLine(
-        "XenithPay MCP Server");
+        "XenithPay MCP Server"
+    );
     Console.Error.WriteLine(
-        "====================");
+        "===================="
+    );
     Console.Error.WriteLine();
     Console.Error.WriteLine(
-        "Transport : Streamable HTTP");
+        "Transport : Streamable HTTP"
+    );
     Console.Error.WriteLine(
-        $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp");
+        $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp"
+    );
     Console.Error.WriteLine(
-        $"Health    : {httpUrl.TrimEnd('/')}/health");
+        $"Health    : {httpUrl.TrimEnd('/')}/health"
+    );
     Console.Error.WriteLine(
-        "Status    : Ready");
+        "Status    : Ready"
+    );
     Console.Error.WriteLine();
 
     await app.RunAsync(
@@ -254,6 +264,7 @@ static async Task RegisterCSharpClient(
 static void RegisterOtherClients(
     IServiceCollection services)
 {
+    // PHP standalone
     var phpClient =
         new PhpXenithPayClient();
 
@@ -261,6 +272,15 @@ static void RegisterOtherClients(
         phpClient
     );
 
+    // WooCommerce
+    var wooCommerceClient =
+        new WooCommerceXenithPayClient();
+
+    services.AddSingleton(
+        wooCommerceClient
+    );
+
+    // Python
     var pythonClient =
         new PythonXenithPayClient();
 
@@ -268,6 +288,7 @@ static void RegisterOtherClients(
         pythonClient
     );
 
+    // Odoo
     var odooHttpClient =
         new HttpClient();
 

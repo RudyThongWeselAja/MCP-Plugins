@@ -12,6 +12,20 @@ from urllib import request, error
 PAYMENT_URI = "/v1/payins"
 
 
+def mask_api_key(api_key: str) -> str:
+    if not api_key:
+        return ""
+
+    if len(api_key) <= 6:
+        return "***"
+
+    return (
+        api_key[:3]
+        + "***"
+        + api_key[-3:]
+    )
+
+
 def generate_signature(
     method: str,
     uri: str,
@@ -66,8 +80,8 @@ def get_config():
 
     api_url = (
         os.getenv(
-            "XENITH_API_URL",
-            "https://openapi.sandbox.xenithpay.com"
+            "WESELAJA_API_URL",
+            "https://sandbox.checkout.weselaja.id"
         )
         .strip()
         .rstrip("/")
@@ -224,7 +238,6 @@ def create_payment(
     }
 
     for field, value in required_fields.items():
-
         if value is None:
             return error_response(
                 f"{field} is required."
@@ -316,23 +329,12 @@ def create_payment(
     )
 
     headers = {
-        "Content-Type":
-            "application/json",
-
-        "Accept":
-            "application/json",
-
-        "Xenith-Api-Key":
-            api_key,
-
-        "Xenith-Request-Timestamp":
-            timestamp,
-
-        "Xenith-Request-Signature":
-            signature,
-
-        "X-Idempotency-Key":
-            idempotency_key
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Xenith-Api-Key": api_key,
+        "Xenith-Request-Timestamp": timestamp,
+        "Xenith-Request-Signature": signature,
+        "X-Idempotency-Key": idempotency_key
     }
 
     print(
@@ -346,24 +348,65 @@ def create_payment(
     )
 
     print(
-        f"URL         : {url}",
+        f"API URL      : {api_url}",
         file=sys.stderr
     )
 
     print(
-        f"Timestamp   : {timestamp}",
+        f"Request URI  : {PAYMENT_URI}",
         file=sys.stderr
     )
 
     print(
-        f"Body        : {body}",
+        f"URL          : {url}",
         file=sys.stderr
     )
 
     print(
-        f"Idempotency : {idempotency_key}",
+        "HTTP Method  : POST",
         file=sys.stderr
     )
+
+    print(
+        f"Timestamp    : {timestamp}",
+        file=sys.stderr
+    )
+
+    print(
+        f"API Key      : {mask_api_key(api_key)}",
+        file=sys.stderr
+    )
+
+    print(
+        f"Signature    : {signature}",
+        file=sys.stderr
+    )
+
+    print(
+        f"Idempotency  : {idempotency_key}",
+        file=sys.stderr
+    )
+
+    print(
+        f"Body         : {body}",
+        file=sys.stderr
+    )
+
+    print(
+        "Request Headers:",
+        file=sys.stderr
+    )
+
+    for header_name, header_value in headers.items():
+        if header_name.lower() == "xenith-api-key":
+            header_value = mask_api_key(
+                header_value
+            )
+
+        print(
+            f"  {header_name}: {header_value}",
+            file=sys.stderr
+        )
 
     print(
         "==========================================",
@@ -380,7 +423,6 @@ def create_payment(
     )
 
     try:
-
         with request.urlopen(
             req,
             timeout=30
@@ -561,117 +603,94 @@ def create_payment(
 
     return {
         "success": True,
-
         "paymentId":
             xenith_response.get(
                 "id"
             ),
-
         "initiatedAmount":
             xenith_response.get(
                 "initiatedAmount"
             ),
-
         "paymentAmount":
             xenith_response.get(
                 "paymentAmount"
             ),
-
         "feeAmount":
             xenith_response.get(
                 "feeAmount"
             ),
-
         "currency":
             xenith_response.get(
                 "currency"
             ),
-
         "paymentMethod":
             xenith_response.get(
                 "paymentMethod"
             ),
-
         "paymentChannel":
             xenith_response.get(
                 "paymentChannel"
             ),
-
         "paymentCode":
             xenith_response.get(
                 "paymentCode"
             ),
-
         "paymentCodeType":
             xenith_response.get(
                 "paymentCodeType"
             ),
-
         "referenceCode":
             xenith_response.get(
                 "referenceCode"
             ),
-
         "customerReference":
             xenith_response.get(
                 "customerReference"
             ),
-
         "customerName":
             xenith_response.get(
                 "customerName"
             ),
-
         "status":
             xenith_response.get(
                 "status"
             ),
-
         "createdTime":
             xenith_response.get(
                 "createdTime"
             ),
-
         "updatedTime":
             xenith_response.get(
                 "updatedTime"
             ),
-
         "expirationTime":
             xenith_response.get(
                 "expirationTime"
             ),
-
         "description":
             xenith_response.get(
                 "description"
             ),
-
         "callbackUrl":
             xenith_response.get(
                 "callbackUrl"
             ),
-
         "redirectUrl":
             xenith_response.get(
                 "redirectUrl"
             ),
-
         "payerAccountName":
             xenith_response.get(
                 "payerAccountName"
             ),
-
         "payerAccountNumber":
             xenith_response.get(
                 "payerAccountNumber"
             ),
-
         "payerPaymentChannel":
             xenith_response.get(
                 "payerPaymentChannel"
             ),
-
         "metadata":
             xenith_response.get(
                 "metadata"
@@ -683,7 +702,6 @@ def create_payment(
                 dict
             )
             else {},
-
         "error":
             None
     }
@@ -706,48 +724,29 @@ def get_payment_method():
 
         return {
             "success": False,
-
-            "id":
-                "xenithpay",
-
-            "title":
-                "XenithPay",
-
+            "id": "xenithpay",
+            "title": "XenithPay",
             "description":
                 "Pay securely using XenithPay payment gateway.",
-
-            "icon":
-                "",
-
+            "icon": "",
             "supports": [
                 "products"
             ],
-
             "error":
                 "XenithPay is disabled."
         }
 
     return {
         "success": True,
-
-        "id":
-            "xenithpay",
-
-        "title":
-            "XenithPay",
-
+        "id": "xenithpay",
+        "title": "XenithPay",
         "description":
             "Pay securely using XenithPay payment gateway.",
-
-        "icon":
-            "",
-
+        "icon": "",
         "supports": [
             "products"
         ],
-
-        "error":
-            None
+        "error": None
     }
 
 

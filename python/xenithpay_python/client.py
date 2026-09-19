@@ -1,5 +1,7 @@
 import json
 import os
+import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
@@ -13,10 +15,8 @@ class XenithPayClient:
 
     def __init__(self):
         self.api_url = (
-            os.getenv(
-                "XENITH_API_URL"
-            )
-            or "https://openapi.sandbox.xenithpay.com"
+            os.getenv("WESELAJA_API_URL")
+            or "https://sandbox.checkout.weselaja.id"
         )
 
         self.api_key = (
@@ -105,8 +105,8 @@ class XenithPayClient:
             )
         )
 
-        idempotency_key = str(
-            uuid.uuid4()
+        idempotency_key = (
+            f"python-{uuid.uuid4().hex}"
         )
 
         request_url = (
@@ -114,55 +114,43 @@ class XenithPayClient:
             f"{self.PAYMENT_URI}"
         )
 
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json",
+            "Xenith-Api-Key": self.api_key,
+            "Xenith-Request-Timestamp": timestamp,
+            "Xenith-Request-Signature": signature,
+            "X-Idempotency-Key": idempotency_key,
+        }
+
         request = Request(
             request_url,
             data=body.encode("utf-8"),
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Xenith-Api-Key": self.api_key,
-                "Xenith-Request-Timestamp": timestamp,
-                "Xenith-Request-Signature": signature,
-                "X-Idempotency-Key": idempotency_key,
-            },
+            headers=headers,
         )
 
-        print(
-            "========== PYTHON → XENITHPAY ==========",
-            file=__import__("sys").stderr,
+        self._print_request_debug(
+            request_url=request_url,
+            body=body,
+            timestamp=timestamp,
+            signature=signature,
+            idempotency_key=idempotency_key,
+            headers=headers,
         )
 
-        print(
-            f"URL         : {request_url}",
-            file=__import__("sys").stderr,
-        )
+        start_time = time.perf_counter()
 
-        print(
-            f"Timestamp   : {timestamp}",
-            file=__import__("sys").stderr,
-        )
-
-        print(
-            f"Body        : {body}",
-            file=__import__("sys").stderr,
-        )
-
-        print(
-            f"Idempotency : {idempotency_key}",
-            file=__import__("sys").stderr,
-        )
-
-        print(
-            "=========================================",
-            file=__import__("sys").stderr,
-        )
+        response_headers = {}
+        status_code = None
+        response_body = ""
 
         try:
             with urlopen(
                 request,
                 timeout=30,
             ) as response:
+
                 response_body = (
                     response.read()
                     .decode("utf-8")
@@ -170,7 +158,12 @@ class XenithPayClient:
 
                 status_code = response.status
 
+                response_headers = dict(
+                    response.headers.items()
+                )
+
         except HTTPError as error:
+
             response_body = (
                 error.read()
                 .decode("utf-8")
@@ -178,34 +171,77 @@ class XenithPayClient:
 
             status_code = error.code
 
+            response_headers = dict(
+                error.headers.items()
+            )
+
         except URLError as error:
+
+            elapsed_ms = int(
+                (
+                    time.perf_counter()
+                    - start_time
+                )
+                * 1000
+            )
+
+            print(
+                file=sys.stderr
+            )
+
+            print(
+                "=" * 50,
+                file=sys.stderr,
+            )
+
+            print(
+                "      XENITHPAY HTTP DEBUG ERROR",
+                file=sys.stderr,
+            )
+
+            print(
+                "=" * 50,
+                file=sys.stderr,
+            )
+
+            print(
+                f"Elapsed          : {elapsed_ms} ms",
+                file=sys.stderr,
+            )
+
+            print(
+                "Exception        : URLError",
+                file=sys.stderr,
+            )
+
+            print(
+                f"Error            : {error.reason}",
+                file=sys.stderr,
+            )
+
+            print(
+                "=" * 50,
+                file=sys.stderr,
+            )
+
             raise RuntimeError(
-                f"Unable to connect to XenithPay: "
+                "Unable to connect to XenithPay: "
                 f"{error.reason}"
             ) from error
 
-        print(
-            file=__import__("sys").stderr
+        elapsed_ms = int(
+            (
+                time.perf_counter()
+                - start_time
+            )
+            * 1000
         )
 
-        print(
-            "========== XENITHPAY RESPONSE ==========",
-            file=__import__("sys").stderr,
-        )
-
-        print(
-            f"HTTP Status : {status_code}",
-            file=__import__("sys").stderr,
-        )
-
-        print(
-            f"Body        : {response_body}",
-            file=__import__("sys").stderr,
-        )
-
-        print(
-            "=========================================",
-            file=__import__("sys").stderr,
+        self._print_response_debug(
+            status_code=status_code,
+            elapsed_ms=elapsed_ms,
+            response_body=response_body,
+            response_headers=response_headers,
         )
 
         if not response_body.strip():
@@ -221,6 +257,7 @@ class XenithPayClient:
             data = json.loads(
                 response_body
             )
+
         except json.JSONDecodeError:
             return {
                 "success": False,
@@ -244,7 +281,314 @@ class XenithPayClient:
             data
         )
 
-    def _validate_configuration(self):
+    def _print_request_debug(
+        self,
+        request_url: str,
+        body: str,
+        timestamp: str,
+        signature: str,
+        idempotency_key: str,
+        headers: dict,
+    ):
+        print(
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "=" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "           XENITHPAY HTTP DEBUG REQUEST",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "=" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Method           : POST",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"Base URL         : {self.api_url}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"Request URL      : {request_url}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "HTTP Version     : 1.1",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Version Policy   : RequestVersionExact",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"Request Body     : {body}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Signature Debug:",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"  Signature URI  : {self.PAYMENT_URI}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"  Timestamp      : {timestamp}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"  Signature      : {signature}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"  Idempotency    : {idempotency_key}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Request Headers  :",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        for name, value in headers.items():
+
+            display_value = value
+
+            if name.lower() == "xenith-api-key":
+                display_value = self._mask_api_key(
+                    value
+                )
+
+            print(
+                f"  {name}: {display_value}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        print(
+            "=" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def _print_response_debug(
+        self,
+        status_code: int,
+        elapsed_ms: int,
+        response_body: str,
+        response_headers: dict,
+    ):
+        reason = self._http_reason(
+            status_code
+        )
+
+        print(
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "=" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "          XENITHPAY HTTP DEBUG RESPONSE",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "=" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"HTTP Status      : "
+            f"{status_code} {reason}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "HTTP Version     : 1.1",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"Elapsed          : {elapsed_ms} ms",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Content-Type     : "
+            f"{response_headers.get('Content-Type', '')}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Content-Length   : "
+            f"{response_headers.get('Content-Length', '')}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            f"Response Body Len: "
+            f"{len(response_body.encode('utf-8'))}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "Response Headers:",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        for name, value in response_headers.items():
+            print(
+                f"  {name}: {value}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        print(
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "RAW RESPONSE BODY:",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "-" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            response_body,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "-" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print(
+            "=" * 50,
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def _mask_api_key(
+        self,
+        api_key: str,
+    ) -> str:
+        if not api_key:
+            return ""
+
+        if len(api_key) <= 6:
+            return "***"
+
+        return (
+            api_key[:3]
+            + "***"
+            + api_key[-3:]
+        )
+
+    def _http_reason(
+        self,
+        status_code: int,
+    ) -> str:
+        reasons = {
+            200: "OK",
+            201: "Created",
+            202: "Accepted",
+            204: "No Content",
+            400: "Bad Request",
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Not Found",
+            409: "Conflict",
+            422: "Unprocessable Entity",
+            429: "Too Many Requests",
+            500: "Internal Server Error",
+            502: "Bad Gateway",
+            503: "Service Unavailable",
+            504: "Gateway Timeout",
+        }
+
+        return reasons.get(
+            status_code,
+            "",
+        )
+
+    def _validate_configuration(
+        self,
+    ):
         if not self.api_key:
             raise RuntimeError(
                 "XenithPay API key is not configured."
@@ -277,7 +621,9 @@ class XenithPayClient:
         ]
 
         for field in required:
-            value = arguments.get(field)
+            value = arguments.get(
+                field
+            )
 
             if value is None:
                 raise ValueError(
@@ -301,15 +647,22 @@ class XenithPayClient:
         raw_body: str,
     ) -> str:
         if isinstance(data, dict):
-            message = data.get("message")
+            message = data.get(
+                "message"
+            )
 
             if message:
                 return str(message)
 
-            error = data.get("error")
+            error = data.get(
+                "error"
+            )
 
             if error:
-                if isinstance(error, str):
+                if isinstance(
+                    error,
+                    str,
+                ):
                     return error
 
                 return json.dumps(

@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 require_once __DIR__ . '/signature.php';
 
 final class XenithPayClient
@@ -79,7 +77,9 @@ final class XenithPayClient
             ];
 
             if (
-                isset($arguments['customerPhoneNumber']) &&
+                isset(
+                    $arguments['customerPhoneNumber']
+                ) &&
                 trim(
                     (string)
                     $arguments['customerPhoneNumber']
@@ -91,7 +91,9 @@ final class XenithPayClient
             }
 
             if (
-                isset($arguments['description']) &&
+                isset(
+                    $arguments['description']
+                ) &&
                 trim(
                     (string)
                     $arguments['description']
@@ -129,7 +131,7 @@ final class XenithPayClient
                 );
 
             $idempotencyKey =
-                'woocommerce-' .
+                'php-' .
                 bin2hex(
                     random_bytes(16)
                 );
@@ -170,7 +172,7 @@ final class XenithPayClient
             fwrite(
                 STDERR,
                 PHP_EOL .
-                '========== WOOCOMMERCE HTTP STACK ==========' .
+                '========== PHP HTTP STACK ==========' .
                 PHP_EOL
             );
 
@@ -204,7 +206,7 @@ final class XenithPayClient
 
             fwrite(
                 STDERR,
-                '==============================================' .
+                '=====================================' .
                 PHP_EOL
             );
 
@@ -255,6 +257,9 @@ final class XenithPayClient
 
                     CURLOPT_HTTP_VERSION =>
                         CURL_HTTP_VERSION_1_1,
+
+                    CURLOPT_HTTPHEADER =>
+                        $headers,
 
                     CURLOPT_FRESH_CONNECT =>
                         true,
@@ -516,27 +521,19 @@ final class XenithPayClient
                     true,
 
                 'paymentId' =>
-                    isset($response['id'])
-                        ? (string) $response['id']
-                        : null,
+                    $response['id'] ?? null,
 
                 'initiatedAmount' =>
-                    isset($response['initiatedAmount'])
-                        ? (string)
-                          $response['initiatedAmount']
-                        : null,
+                    $response['initiatedAmount']
+                    ?? null,
 
                 'paymentAmount' =>
-                    isset($response['paymentAmount'])
-                        ? (string)
-                          $response['paymentAmount']
-                        : null,
+                    $response['paymentAmount']
+                    ?? null,
 
                 'feeAmount' =>
-                    isset($response['feeAmount'])
-                        ? (string)
-                          $response['feeAmount']
-                        : null,
+                    $response['feeAmount']
+                    ?? null,
 
                 'currency' =>
                     $response['currency']
@@ -563,12 +560,8 @@ final class XenithPayClient
                     ?? null,
 
                 'customerReference' =>
-                    isset(
-                        $response['customerReference']
-                    )
-                        ? (string)
-                          $response['customerReference']
-                        : null,
+                    $response['customerReference']
+                    ?? null,
 
                 'customerName' =>
                     $response['customerName']
@@ -640,19 +633,10 @@ final class XenithPayClient
         string $body,
         array $headers
     ): void {
-        $signaturePayload =
-            'POST' .
-            "\n" .
-            self::PAYMENT_URI .
-            "\n" .
-            $timestamp .
-            "\n" .
-            $body;
-
         fwrite(
             STDERR,
             PHP_EOL .
-            '========== WOOCOMMERCE -> XENITHPAY ==========' .
+            '========== PHP -> XENITHPAY ==========' .
             PHP_EOL
         );
 
@@ -734,16 +718,6 @@ final class XenithPayClient
 
         fwrite(
             STDERR,
-            'Signature Payload SHA256: ' .
-            hash(
-                'sha256',
-                $signaturePayload
-            ) .
-            PHP_EOL
-        );
-
-        fwrite(
-            STDERR,
             'Idempotency    : ' .
             $idempotencyKey .
             PHP_EOL
@@ -818,7 +792,7 @@ final class XenithPayClient
 
         fwrite(
             STDERR,
-            '==============================================' .
+            '========================================' .
             PHP_EOL
         );
     }
@@ -834,7 +808,7 @@ final class XenithPayClient
         fwrite(
             STDERR,
             PHP_EOL .
-            '========== WOOCOMMERCE ACTUAL CURL REQUEST ==========' .
+            '========== PHP ACTUAL CURL REQUEST ==========' .
             PHP_EOL
         );
 
@@ -934,7 +908,7 @@ final class XenithPayClient
 
         fwrite(
             STDERR,
-            '====================================================' .
+            '==============================================' .
             PHP_EOL
         );
     }
@@ -958,7 +932,7 @@ final class XenithPayClient
         fwrite(
             STDERR,
             PHP_EOL .
-            '========== WOOCOMMERCE XENITHPAY RESPONSE ==========' .
+            '========== PHP XENITHPAY RESPONSE ==========' .
             PHP_EOL
         );
 
@@ -1095,9 +1069,7 @@ final class XenithPayClient
         $lines =
             preg_split(
                 "/\r\n|\n|\r/",
-                trim(
-                    $responseHeaders
-                )
+                trim($responseHeaders)
             );
 
         if (is_array($lines)) {
@@ -1142,7 +1114,7 @@ final class XenithPayClient
 
         fwrite(
             STDERR,
-            '====================================================' .
+            '==============================================' .
             PHP_EOL
         );
     }
@@ -1203,7 +1175,8 @@ final class XenithPayClient
         return number_format(
             (float) $seconds * 1000,
             2
-        ) . ' ms';
+        ) .
+        ' ms';
     }
 
     private function maskApiKey(
@@ -1340,7 +1313,6 @@ final class XenithPayClient
     ): array {
         return [
             'success' => false,
-
             'paymentId' => null,
             'initiatedAmount' => null,
             'paymentAmount' => null,
@@ -1364,7 +1336,6 @@ final class XenithPayClient
             'payerAccountNumber' => null,
             'payerPaymentChannel' => null,
             'metadata' => new stdClass(),
-
             'error' => $message,
         ];
     }
