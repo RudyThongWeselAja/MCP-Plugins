@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record
+        id="payment_provider_form_weselaja"
+        model="ir.ui.view"
+    >
+        <field name="name">payment.provider.form.weselaja</field>
+        <field name="model">payment.provider</field>
+        <field
+            name="inherit_id"
+            ref="payment.payment_provider_form"
+        />
+        <field name="arch" type="xml">
+            <xpath
+                expr="//group[@name='provider_credentials']"
+                position="inside"
+            >
+                <group
+                    string="WeselAja"
+                    invisible="code != 'weselaja'"
+                >
+                    <field
+                        name="weselaja_api_key"
+                        password="True"
+                        required="state != 'disabled'"
+                    />
+                    <field
+                        name="weselaja_secret_key"
+                        password="True"
+                        required="state != 'disabled'"
+                    />
+                    <field
+                        name="weselaja_api_url"
+                        required="state != 'disabled'"
+                    />
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

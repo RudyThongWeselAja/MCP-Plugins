@@ -9,7 +9,7 @@ final class WeselAjaSignature
         string $uri,
         string $timestamp,
         string $body,
-        string $secretKey
+        string $secret
     ): string {
         $payload =
             $method . "\n" .
@@ -17,14 +17,13 @@ final class WeselAjaSignature
             $timestamp . "\n" .
             $body;
 
-        $hash =
+        return base64_encode(
             hash_hmac(
                 'sha256',
                 $payload,
-                $secretKey,
+                $secret,
                 true
-            );
-
-        return base64_encode($hash);
+            )
+        );
     }
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/signature.php';
 
-final class XenithPayClient
+final class WeselAjaClient
 {
     private const PAYMENT_URI = '/v1/payins';
 
@@ -12,7 +12,7 @@ final class XenithPayClient
     private string $apiKey;
     private string $secretKey;
 
-    private SignatureGenerator $signatureGenerator;
+    private WeselAjaSignature $signatureGenerator;
 
     public function __construct()
     {
@@ -37,7 +37,7 @@ final class XenithPayClient
         );
 
         $this->signatureGenerator =
-            new SignatureGenerator();
+            new WeselAjaSignature();
     }
 
     public function createPayment(
@@ -652,7 +652,7 @@ final class XenithPayClient
         fwrite(
             STDERR,
             PHP_EOL .
-            '========== WOOCOMMERCE -> XENITHPAY ==========' .
+            '========== WOOCOMMERCE -> WESELAJA ==========' .
             PHP_EOL
         );
 
@@ -958,7 +958,7 @@ final class XenithPayClient
         fwrite(
             STDERR,
             PHP_EOL .
-            '========== WOOCOMMERCE XENITHPAY RESPONSE ==========' .
+            '========== WOOCOMMERCE WESELAJA RESPONSE ==========' .
             PHP_EOL
         );
 
