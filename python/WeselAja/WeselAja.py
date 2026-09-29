@@ -387,13 +387,13 @@ def handle_request(payload):
     tool = payload.get("tool")
     arguments = payload.get("arguments", {})
 
-    if tool == "is_xenithpay_active":
+    if tool == "is_weselaja_active":
         return is_active()
 
-    if tool == "get_xenithpay_payment_method":
+    if tool == "get_weselaja_payment_method":
         return get_payment_method()
 
-    if tool == "create_xenithpay_payment":
+    if tool == "create_weselaja_payment":
         return create_payment(arguments)
 
     return error_response(
