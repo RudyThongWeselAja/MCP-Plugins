@@ -6,10 +6,12 @@
     >
         <field name="name">payment.provider.form.weselaja</field>
         <field name="model">payment.provider</field>
+
         <field
             name="inherit_id"
             ref="payment.payment_provider_form"
         />
+
         <field name="arch" type="xml">
             <xpath
                 expr="//group[@name='provider_credentials']"
@@ -20,19 +22,37 @@
                     invisible="code != 'weselaja'"
                 >
                     <field
-                        name="weselaja_api_key"
-                        password="True"
-                        required="state != 'disabled'"
-                    />
-                    <field
-                        name="weselaja_secret_key"
-                        password="True"
-                        required="state != 'disabled'"
-                    />
-                    <field
-                        name="weselaja_api_url"
-                        required="state != 'disabled'"
-                    />
+    name="weselaja_api_key"
+    password="True"
+    required="state != 'disabled'"
+/>
+
+<field
+    name="weselaja_secret_key"
+    password="True"
+    required="state != 'disabled'"
+/>
+
+<field
+    name="weselaja_webhook_secret"
+    password="True"
+    required="state != 'disabled'"
+/>
+
+<field
+    name="weselaja_api_url"
+    required="state != 'disabled'"
+/>
+
+<field
+    name="weselaja_payment_method"
+    required="state != 'disabled'"
+/>
+
+<field
+    name="weselaja_payment_channel"
+    required="state != 'disabled'"
+/>
                 </group>
             </xpath>
         </field>

@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
-using WeselAjaMcpServer.Client;
 using WeselAjaMcpServer.Clients;
 
 Env.Load(
@@ -49,10 +48,6 @@ static async Task RunStdioServer(
         csharpProjectPath
     );
 
-    RegisterOtherClients(
-        builder.Services
-    );
-
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
@@ -66,12 +61,15 @@ static async Task RunStdioServer(
         "=================="
     );
     Console.Error.WriteLine();
+
     Console.Error.WriteLine(
         "Transport : STDIO"
     );
+
     Console.Error.WriteLine(
         "Status    : Ready"
     );
+
     Console.Error.WriteLine();
 
     await builder
@@ -93,10 +91,6 @@ static async Task RunHttpServer(
     await RegisterCSharpClient(
         builder.Services,
         csharpProjectPath
-    );
-
-    RegisterOtherClients(
-        builder.Services
     );
 
     builder.Services
@@ -143,18 +137,23 @@ static async Task RunHttpServer(
         "=================="
     );
     Console.Error.WriteLine();
+
     Console.Error.WriteLine(
         "Transport : Streamable HTTP"
     );
+
     Console.Error.WriteLine(
         $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp"
     );
+
     Console.Error.WriteLine(
         $"Health    : {httpUrl.TrimEnd('/')}/health"
     );
+
     Console.Error.WriteLine(
         "Status    : Ready"
     );
+
     Console.Error.WriteLine();
 
     await app.RunAsync(
@@ -258,42 +257,5 @@ static async Task RegisterCSharpClient(
 
     services.AddSingleton(
         csharpMcpClient
-    );
-}
-
-static void RegisterOtherClients(
-    IServiceCollection services)
-{
-    var phpClient =
-        new PhpWeselAjaClient();
-
-    services.AddSingleton(
-        phpClient
-    );
-
-    var wooCommerceClient =
-        new WooCommerceWeselAjaClient();
-
-    services.AddSingleton(
-        wooCommerceClient
-    );
-
-    var pythonClient =
-        new PythonWeselAjaClient();
-
-    services.AddSingleton(
-        pythonClient
-    );
-
-    var odooHttpClient =
-        new HttpClient();
-
-    var odooClient =
-        new OdooWeselAjaClient(
-            odooHttpClient
-        );
-
-    services.AddSingleton(
-        odooClient
     );
 }

@@ -12,7 +12,8 @@ public static class WeselAjaTools
         Name = "is_weselaja_active",
         UseStructuredContent = true)]
     [Description(
-        "Checks whether the WeselAja payment method is active.")]
+        "Checks whether the WeselAja payment integration is enabled and active. " +
+        "Use this only for service availability or activation checks.")]
     public static bool IsActive(
         WeselAjaBlocksService service)
     {
@@ -23,7 +24,8 @@ public static class WeselAjaTools
         Name = "get_weselaja_payment_method",
         UseStructuredContent = true)]
     [Description(
-        "Returns WeselAja payment method information.")]
+        "Returns the WeselAja payment method configuration, including the methods/channels currently available to the integration. " +
+        "Use this for payment-method availability questions.")]
     public static PaymentMethodInfo GetPaymentMethodInfo(
         WeselAjaBlocksService service)
     {
@@ -34,7 +36,7 @@ public static class WeselAjaTools
         Name = "create_weselaja_payment",
         UseStructuredContent = true)]
     [Description(
-        "Creates a new payment through the WeselAja API.")]
+        "Creates a new payment transaction through the WeselAja API using the supplied amount, customer, method, channel, and callback details.")]
     public static async Task<CreatePaymentResponse> CreatePayment(
         [Description("Payment amount")]
         int amount,

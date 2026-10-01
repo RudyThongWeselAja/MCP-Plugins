@@ -60,6 +60,49 @@ class WeselAjaClient:
             digest
         ).decode("utf-8")
 
+    def _extract_payment_url(
+        self,
+        response_data,
+    ):
+        for key in (
+            "paymentUrl",
+            "checkoutUrl",
+            "paymentPageUrl",
+            "paymentLink",
+        ):
+            value = response_data.get(key)
+
+            if (
+                isinstance(value, str)
+                and value.startswith(
+                    (
+                        "http://",
+                        "https://",
+                    )
+                )
+            ):
+                return value
+
+        payment_code = response_data.get(
+            "paymentCode"
+        )
+
+        if (
+            isinstance(
+                payment_code,
+                str,
+            )
+            and payment_code.startswith(
+                (
+                    "http://",
+                    "https://",
+                )
+            )
+        ):
+            return payment_code
+
+        return None
+
     def create_payment(self, arguments):
 
         if not self.is_configured():
@@ -73,6 +116,7 @@ class WeselAjaClient:
                 "paymentMethod": None,
                 "paymentChannel": None,
                 "paymentCode": None,
+                "paymentUrl": None,
                 "paymentCodeType": None,
                 "referenceCode": None,
                 "customerReference": None,
@@ -92,7 +136,10 @@ class WeselAjaClient:
                     "WeselAja provider is not configured.",
             }
 
-        if not isinstance(arguments, dict):
+        if not isinstance(
+            arguments,
+            dict,
+        ):
             return {
                 "success": False,
                 "error":
@@ -112,8 +159,9 @@ class WeselAjaClient:
         ]
 
         for field in required_fields:
-
-            value = arguments.get(field)
+            value = arguments.get(
+                field
+            )
 
             if value is None:
                 return {
@@ -123,7 +171,10 @@ class WeselAjaClient:
                 }
 
             if (
-                isinstance(value, str)
+                isinstance(
+                    value,
+                    str,
+                )
                 and not value.strip()
             ):
                 return {
@@ -133,7 +184,10 @@ class WeselAjaClient:
                 }
 
         try:
-            amount = int(arguments["amount"])
+            amount = int(
+                arguments["amount"]
+            )
+
         except (
             TypeError,
             ValueError,
@@ -152,28 +206,53 @@ class WeselAjaClient:
             }
 
         body_data = {
-            "initiatedAmount": amount,
+            "initiatedAmount":
+                amount,
+
             "currency":
-                str(arguments["currency"]),
+                str(
+                    arguments["currency"]
+                ),
+
             "paymentMethod":
-                str(arguments["paymentMethod"]),
+                str(
+                    arguments["paymentMethod"]
+                ),
+
             "paymentChannel":
-                str(arguments["paymentChannel"]),
+                str(
+                    arguments["paymentChannel"]
+                ),
+
             "referenceCode":
-                str(arguments["referenceCode"]),
+                str(
+                    arguments["referenceCode"]
+                ),
+
             "customerReference":
                 arguments["customerReference"],
+
             "customerName":
-                str(arguments["customerName"]),
+                str(
+                    arguments["customerName"]
+                ),
+
             "callbackUrl":
-                str(arguments["callbackUrl"]),
+                str(
+                    arguments["callbackUrl"]
+                ),
+
             "redirectUrl":
-                str(arguments["redirectUrl"]),
+                str(
+                    arguments["redirectUrl"]
+                ),
         }
 
-        customer_phone_number = arguments.get(
+        customer_phone_number = (
+            arguments.get(
                 "customerPhoneNumber"
             )
+        )
 
         if (
             customer_phone_number is not None
@@ -187,7 +266,9 @@ class WeselAjaClient:
                 customer_phone_number
             )
 
-        description = arguments.get("description")
+        description = arguments.get(
+            "description"
+        )
 
         if (
             description is not None
@@ -197,36 +278,62 @@ class WeselAjaClient:
                 "description"
             ] = str(description)
 
-        body = json.dumps(
-                body_data,
-                separators=(",", ":"),
-                ensure_ascii=False,
+        metadata = arguments.get(
+            "metadata"
+        )
+
+        if (
+            metadata is not None
+            and isinstance(
+                metadata,
+                dict,
             )
+        ):
+            body_data[
+                "metadata"
+            ] = metadata
+
+        body = json.dumps(
+            body_data,
+            separators=(
+                ",",
+                ":",
+            ),
+            ensure_ascii=False,
+        )
 
         timestamp = (
-                datetime.now(
-                    timezone.utc
-                )
-                .isoformat(
-                    timespec="milliseconds"
-                )
-                .replace(
-                    "+00:00",
-                    "Z",
-                )
+            datetime.now(
+                timezone.utc
             )
+            .isoformat(
+                timespec="milliseconds"
+            )
+            .replace(
+                "+00:00",
+                "Z",
+            )
+        )
 
-        signature = self.generate_signature(
+        signature = (
+            self.generate_signature(
                 "POST",
                 PAYMENT_URI,
                 timestamp,
                 body,
                 self.secret_key,
             )
+        )
 
-        idempotency_key ="odoo-" + uuid.uuid4().hex
+        idempotency_key = (
+            "odoo-"
+            + uuid.uuid4().hex
+        )
 
-        url = self.api_url + PAYMENT_URI
+        url = (
+            self.api_url
+            + PAYMENT_URI
+        )
 
         headers = {
             "Content-Type":
@@ -250,14 +357,15 @@ class WeselAjaClient:
 
         try:
             response = requests.post(
-                    url,
-                    data=body.encode("utf-8"),
-                    headers=headers,
-                    timeout=30,
-                )
+                url,
+                data=body.encode(
+                    "utf-8"
+                ),
+                headers=headers,
+                timeout=30,
+            )
 
         except requests.RequestException as exc:
-
             return {
                 "success": False,
                 "error":
@@ -266,10 +374,11 @@ class WeselAjaClient:
             }
 
         try:
-            response_data = response.json()
+            response_data = (
+                response.json()
+            )
 
         except ValueError:
-
             return {
                 "success": False,
                 "error":
@@ -293,9 +402,15 @@ class WeselAjaClient:
             or response.status_code >= 300
         ):
             api_error = (
-                response_data.get("message")
-                or response_data.get("error")
-                or response_data.get("code")
+                response_data.get(
+                    "message"
+                )
+                or response_data.get(
+                    "error"
+                )
+                or response_data.get(
+                    "code"
+                )
                 or response.text
             )
 
@@ -304,9 +419,9 @@ class WeselAjaClient:
                 dict,
             ):
                 api_error = json.dumps(
-                        api_error,
-                        ensure_ascii=False,
-                    )
+                    api_error,
+                    ensure_ascii=False,
+                )
 
             return {
                 "success": False,
@@ -318,7 +433,9 @@ class WeselAjaClient:
             "success": True,
 
             "paymentId":
-                response_data.get("id"),
+                response_data.get(
+                    "id"
+                ),
 
             "initiatedAmount":
                 response_data.get(
@@ -353,8 +470,11 @@ class WeselAjaClient:
             "paymentCode":
                 response_data.get(
                     "paymentCode"
-                ) or response_data.get(
-                    "paymentUrl"
+                ),
+
+            "paymentUrl":
+                self._extract_payment_url(
+                    response_data
                 ),
 
             "paymentCodeType":
@@ -431,7 +551,13 @@ class WeselAjaClient:
                 response_data.get(
                     "metadata"
                 )
-                or {},
+                if isinstance(
+                    response_data.get(
+                        "metadata"
+                    ),
+                    dict,
+                )
+                else {},
 
             "error":
                 None,

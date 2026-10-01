@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="payment_method_weselaja" model="payment.method">
+        <field name="name">WeselAja</field>
+        <field name="code">weselaja</field>
+        <field name="sequence">10</field>
+    </record>
+
+</odoo>

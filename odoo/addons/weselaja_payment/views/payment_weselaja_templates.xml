@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <template
+        id="weselaja_redirect_form"
+    >
+        <div
+            class="text-center"
+            name="o_weselaja_redirect_form"
+        >
+
+            <p>
+                Redirecting to WeselAja...
+            </p>
+
+            <form
+                t-att-action="payment_url"
+                method="get"
+                id="o_weselaja_redirect_form_form"
+            >
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+                    Continue to Payment
+                </button>
+
+            </form>
+
+            <script type="text/javascript">
+                document
+                    .getElementById(
+                        'o_weselaja_redirect_form_form'
+                    )
+                    .submit();
+            </script>
+
+        </div>
+    </template>
+
+</odoo>

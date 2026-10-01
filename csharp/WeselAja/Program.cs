@@ -39,14 +39,14 @@ var options =
             (
                 Environment.GetEnvironmentVariable(
                     "XENITH_TITLE")
-                ?? "XenithPay"
+                ?? "WeselAja"
             ).Trim(),
 
         Description =
             (
                 Environment.GetEnvironmentVariable(
                     "XENITH_DESCRIPTION")
-                ?? "Pay securely using XenithPay payment gateway."
+                ?? "Pay securely using WeselAja payment gateway."
             ).Trim(),
 
         Icon =

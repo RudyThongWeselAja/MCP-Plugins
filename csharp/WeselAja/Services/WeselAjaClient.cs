@@ -38,7 +38,7 @@ public class WeselAjaClient : IWeselAjaClient
         if (!_options.Enabled)
         {
             return ErrorResponse(
-                "XenithPay is disabled.");
+                "WeselAja is disabled.");
         }
 
         var apiUrl =
@@ -62,13 +62,13 @@ public class WeselAjaClient : IWeselAjaClient
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return ErrorResponse(
-                "XenithPay API key is not configured.");
+                "WeselAja API key is not configured.");
         }
 
         if (string.IsNullOrWhiteSpace(secretKey))
         {
             return ErrorResponse(
-                "XenithPay secret key is not configured.");
+                "WeselAja secret key is not configured.");
         }
 
         if (request.InitiatedAmount <= 0)
@@ -135,6 +135,28 @@ public class WeselAjaClient : IWeselAjaClient
         {
             return ErrorResponse(
                 "Customer reference may only contain letters, numbers, '-' and '_'.");
+        }
+
+        if (!Uri.TryCreate(
+        request.CallbackUrl,
+        UriKind.Absolute,
+        out var callbackUri) ||
+    (callbackUri.Scheme != Uri.UriSchemeHttps &&
+     callbackUri.Scheme != Uri.UriSchemeHttp))
+        {
+            return ErrorResponse(
+                $"Invalid callback URL: {request.CallbackUrl}");
+        }
+
+        if (!Uri.TryCreate(
+                request.RedirectUrl,
+                UriKind.Absolute,
+                out var redirectUri) ||
+            (redirectUri.Scheme != Uri.UriSchemeHttps &&
+             redirectUri.Scheme != Uri.UriSchemeHttp))
+        {
+            return ErrorResponse(
+                $"Invalid redirect URL: {request.RedirectUrl}");
         }
 
         var payload =
@@ -206,6 +228,23 @@ public class WeselAjaClient : IWeselAjaClient
             JsonSerializer.Serialize(
                 payload,
                 jsonOptions);
+
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "========== WESELAJA REQUEST DEBUG =========="
+        );
+        Console.Error.WriteLine(
+    $"CALLBACK URL : {JsonSerializer.Serialize(request.CallbackUrl)}"
+);
+        Console.Error.WriteLine(
+            $"REDIRECT URL : {JsonSerializer.Serialize(request.RedirectUrl)}"
+        );
+        Console.Error.WriteLine(
+            $"REQUEST BODY : {body}"
+        );
+        Console.Error.WriteLine(
+            "============================================"
+        );
 
         var timestamp =
             DateTimeOffset.UtcNow.ToString(
