@@ -1,0 +1,20 @@
+[build-system]
+requires = [
+    "setuptools>=68",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+[project]
+name = "weselaja-python"
+version = "0.1.0"
+description = "WeselAja Python integration"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0,<2.0"
+]
+[tool.setuptools]
+py-modules = [
+    "weselaja_client",
+    "models",
+    "exceptions"
+]

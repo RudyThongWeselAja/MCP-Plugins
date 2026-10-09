@@ -1,3 +1,1 @@
-# WeselAja generated integration
-#
-# This project uses Python standard-library modules only.
+python-dotenv>=1.0,<2.0
