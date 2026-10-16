@@ -8,20 +8,21 @@ Buat file `.env` di folder `mcp/WeselAjaMcpServer/`.
 
 ```env
 XENITH_ENABLED=true
-XENITH_TITLE=WeselAja
-XENITH_DESCRIPTION=Pay using WeselAja Virtual Account
+XENITH_API_KEY=
+XENITH_SECRET_KEY=
+WESELAJA_API_URL=https://sandbox.checkout.weselaja.id
 
-XENITH_API_KEY=your_api_key
-XENITH_SECRET_KEY=your_secret_key
-WESELAJA_API_URL=your_sandbox_api_base_url
-
-WESELAJA_CURRENCY=IDR
-WESELAJA_PAYMENT_METHOD=VIRTUAL_ACCOUNT
-WESELAJA_CALLBACK_URL=https://your-domain.com/callback
-WESELAJA_REDIRECT_URL=https://your-domain.com/payment/return
+XENITH_ODOO_URL=http://127.0.0.1:8069
+XENITH_ODOO_API_TOKEN=
 
 MCP_TRANSPORT=http
 MCP_HTTP_URL=http://0.0.0.0:3001
+
+WESELAJA_CURRENCY=IDR
+WESELAJA_PAYMENT_METHOD=VIRTUAL_ACCOUNT
+
+WESELAJA_CALLBACK_URL=.../payment/weselaja/callback
+WESELAJA_REDIRECT_URL=.../payment/weselaja/return
 ```
 
 Sesuaikan API key, secret key, API URL, callback URL, dan redirect URL dengan konfigurasi akun WeselAja kamu.
