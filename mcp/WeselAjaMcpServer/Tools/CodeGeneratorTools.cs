@@ -10,40 +10,54 @@ namespace WeselAjaMcpServer.Tools;
 [McpServerToolType]
 public static class CodeGeneratorTools
 {
-    [McpServerTool(
-        Name = "generate_weselaja_integration")]
+    private static readonly string[] SupportedTargets =
+    [
+        "python",
+        "csharp",
+        "php",
+        "go",
+        "javascript",
+        "typescript",
+        "java",
+        "odoo",
+        "woocommerce"
+    ];
+
+    [McpServerTool(Name = "generate_weselaja_integration")]
     [Description(
-        "Generates a standalone WeselAja developer integration project. " +
-        "This tool is for CODE GENERATION only and never creates a payment itself. " +
-        "Supported targets are Python, C#, PHP, Go, JavaScript, TypeScript, and Java. " +
-        "The generated scope currently includes creating payments, retrieving payin sessions, and handling browser redirects. " +
-        "Callback handling is not generated yet. " +
-        "Use this tool when the user asks to build, generate, scaffold, or create " +
-        "WeselAja integration code.")]
+        "Generates a standalone WeselAja integration project, an Odoo " +
+        "payment provider module, or a WooCommerce plugin. This tool " +
+        "generates code only and never creates a payment itself. " +
+        "Supported targets are Python, C#, PHP, Go, JavaScript, " +
+        "TypeScript, Java, Odoo, and WooCommerce. The CMS integrations " +
+        "include configuration, Virtual Account payment instructions, " +
+        "Pay In creation, callbacks, browser redirects, and status checks.")]
     public static string GenerateWeselAjaIntegration(
         [Description(
-            "Target programming language or platform. " +
-            "Supported targets: python, csharp, go, golang, php, javascript, js, " +
-            "typescript, ts, java.")]
+            "Target platform: python, csharp, php, go, javascript, " +
+            "typescript, java, odoo, or woocommerce.")]
         string target,
 
         [Description(
-            "Name of the generated project directory. " +
-            "Examples: weselaja-python, weselaja-csharp, weselaja-php, " +
-            "weselaja-go, weselaja-javascript, weselaja-typescript, weselaja-java.")]
+            "Name of the generated project or module directory.")]
         string projectName = "weselaja-integration",
 
         [Description(
-            "Whether to include a runnable example application.")]
+            "Whether to include an example when supported.")]
         bool includeExample = true,
 
         [Description(
-            "Whether to include self-tests.")]
+            "Whether to include tests when supported.")]
         bool includeTests = true,
 
         [Description(
             "Whether an existing generated project may be overwritten.")]
-        bool overwrite = false)
+        bool overwrite = false,
+
+        [Description(
+            "Target Odoo version. Supported value is 18.0. " +
+            "This parameter is used only when target is odoo.")]
+        string odooVersion = "18.0")
     {
         if (string.IsNullOrWhiteSpace(target))
         {
@@ -52,40 +66,22 @@ public static class CodeGeneratorTools
                 {
                     success = false,
                     error = "Target is required.",
-                    supportedTargets = new[]
-                    {
-                        "python",
-                        "csharp",
-                        "php",
-                        "go",
-                        "javascript",
-                        "typescript",
-                        "java"
-                    }
+                    supportedTargets = SupportedTargets
                 },
                 JsonOptions());
         }
 
         try
         {
-            var normalizedTarget =
-                target.Trim();
+            var normalizedTarget = target.Trim();
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "python",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "python"))
             {
-                var generator =
-                    new PythonWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new PythonWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -93,31 +89,13 @@ public static class CodeGeneratorTools
                     "WeselAja Python integration project generated successfully.");
             }
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "csharp",
-                    StringComparison.OrdinalIgnoreCase)
-                ||
-                string.Equals(
-                    normalizedTarget,
-                    "c#",
-                    StringComparison.OrdinalIgnoreCase)
-                ||
-                string.Equals(
-                    normalizedTarget,
-                    "dotnet",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "csharp", "c#", "dotnet"))
             {
-                var generator =
-                    new CSharpWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new CSharpWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -125,21 +103,13 @@ public static class CodeGeneratorTools
                     "WeselAja C# integration project generated successfully.");
             }
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "php",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "php"))
             {
-                var generator =
-                    new PhpWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new PhpWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -147,26 +117,13 @@ public static class CodeGeneratorTools
                     "WeselAja PHP integration project generated successfully.");
             }
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "go",
-                    StringComparison.OrdinalIgnoreCase)
-                ||
-                string.Equals(
-                    normalizedTarget,
-                    "golang",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "go", "golang"))
             {
-                var generator =
-                    new GoWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new GoWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -174,26 +131,13 @@ public static class CodeGeneratorTools
                     "WeselAja Go integration project generated successfully.");
             }
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "javascript",
-                    StringComparison.OrdinalIgnoreCase)
-                ||
-                string.Equals(
-                    normalizedTarget,
-                    "js",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "javascript", "js"))
             {
-                var generator =
-                    new JavaScriptWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new JavaScriptWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -201,26 +145,13 @@ public static class CodeGeneratorTools
                     "WeselAja JavaScript integration project generated successfully.");
             }
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "typescript",
-                    StringComparison.OrdinalIgnoreCase)
-                ||
-                string.Equals(
-                    normalizedTarget,
-                    "ts",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "typescript", "ts"))
             {
-                var generator =
-                    new TypeScriptWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new TypeScriptWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -228,21 +159,13 @@ public static class CodeGeneratorTools
                     "WeselAja TypeScript integration project generated successfully.");
             }
 
-            if (
-                string.Equals(
-                    normalizedTarget,
-                    "java",
-                    StringComparison.OrdinalIgnoreCase))
+            if (IsTarget(normalizedTarget, "java"))
             {
-                var generator =
-                    new JavaWeselAjaGenerator();
-
-                var result =
-                    generator.Generate(
-                        projectName,
-                        includeExample,
-                        includeTests,
-                        overwrite);
+                var result = new JavaWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -250,22 +173,50 @@ public static class CodeGeneratorTools
                     "WeselAja Java integration project generated successfully.");
             }
 
+            if (IsTarget(normalizedTarget, "odoo"))
+            {
+                var result = new OdooWeselAjaGenerator().Generate(
+                    projectName,
+                    odooVersion,
+                    includeExample,
+                    includeTests,
+                    overwrite);
+
+                return SerializeSuccess(
+                    result,
+                    "odoo",
+                    $"WeselAja Odoo {odooVersion} module generated. " +
+                    "Validate installation and payment flows before production use.");
+            }
+
+            if (IsTarget(
+                normalizedTarget,
+                "woocommerce",
+                "woo-commerce",
+                "wordpress",
+                "wc"))
+            {
+                var result = new WooCommerceWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite);
+
+                return SerializeSuccess(
+                    result,
+                    "woocommerce",
+                    "WeselAja WooCommerce plugin generated. Configure " +
+                    "the sandbox or production API URL and credentials " +
+                    "in WooCommerce settings, then test payment creation, " +
+                    "callbacks, redirects, and status checks.");
+            }
+
             return JsonSerializer.Serialize(
                 new
                 {
                     success = false,
-                    error =
-                        $"Unsupported target '{target}'.",
-                    supportedTargets = new[]
-                    {
-                        "python",
-                        "csharp",
-                        "php",
-                        "go",
-                        "javascript",
-                        "typescript",
-                        "java"
-                    }
+                    error = $"Unsupported target '{target}'.",
+                    supportedTargets = SupportedTargets
                 },
                 JsonOptions());
         }
@@ -281,6 +232,17 @@ public static class CodeGeneratorTools
         }
     }
 
+    private static bool IsTarget(
+        string target,
+        params string[] aliases)
+    {
+        return aliases.Any(alias =>
+            string.Equals(
+                target,
+                alias,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string SerializeSuccess(
         GenerationResult result,
         string target,
@@ -291,12 +253,9 @@ public static class CodeGeneratorTools
             {
                 success = true,
                 target,
-                projectName =
-                    result.ProjectName,
-                outputDirectory =
-                    result.OutputDirectory,
-                files =
-                    result.Files,
+                projectName = result.ProjectName,
+                outputDirectory = result.OutputDirectory,
+                files = result.Files,
                 message
             },
             JsonOptions());
