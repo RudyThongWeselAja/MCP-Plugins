@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,19 +9,16 @@
 
   <ItemGroup>
     <PackageReference Include="DotNetEnv" Version="3.2.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
     <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
   </ItemGroup>
 
-  <!-- Generated projects are output artifacts, not source code
-       for the WeselAja MCP Server itself. -->
   <ItemGroup>
-    <Compile Remove="generated\**" />
-    <EmbeddedResource Remove="generated\**" />
-    <Content Remove="generated\**" />
-    <None Remove="generated\**" />
-    <AdditionalFiles Remove="generated\**" />
+    <Compile Remove="generated/**/*.cs" />
+    <EmbeddedResource Remove="generated/**" />
+    <Content Remove="generated/**" />
+    <None Remove="generated/**" />
+    <AdditionalFiles Remove="generated/**" />
   </ItemGroup>
 
 </Project>

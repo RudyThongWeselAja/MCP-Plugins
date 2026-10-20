@@ -1,0 +1,17 @@
+services:
+  weselaja-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: weselaja-mcp:local
+    container_name: weselaja-mcp
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    env_file:
+      - .env
+    environment:
+      MCP_TRANSPORT: "http"
+      MCP_HTTP_URL: "http://0.0.0.0:3001"
+    volumes:
+      - ./generated:/app/generated

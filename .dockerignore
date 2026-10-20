@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.vscode/
+.git/
+.env
+.env.*
+!.env.example
+generated/
+**/generated/
+**/__pycache__/
+**/*.pyc
+*.user
+*.suo

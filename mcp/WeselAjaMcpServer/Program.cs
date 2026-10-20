@@ -2,26 +2,25 @@ using DotNetEnv;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
-using WeselAjaMcpServer.Clients;
+using WeselAjaMcp.Configuration;
+using WeselAjaMcp.Security;
+using WeselAjaMcp.Services;
 
-Env.Load(
-    Path.Combine(
-        Directory.GetCurrentDirectory(),
-        ".env"
-    )
+var envPath = Path.Combine(
+    Directory.GetCurrentDirectory(),
+    ".env"
 );
 
-var transportMode =
-    (
-        Environment.GetEnvironmentVariable(
-            "MCP_TRANSPORT"
-        )
-        ?? "stdio"
-    )
-    .Trim()
-    .ToLowerInvariant();
+if (File.Exists(envPath))
+{
+    Env.Load(envPath);
+}
+
+var transportMode = (
+    Environment.GetEnvironmentVariable("MCP_TRANSPORT")
+    ?? "stdio"
+).Trim().ToLowerInvariant();
 
 if (transportMode == "http")
 {
@@ -32,66 +31,29 @@ else
     await RunStdioServer(args);
 }
 
-static async Task RunStdioServer(
-    string[] args)
+static async Task RunStdioServer(string[] args)
 {
-    var builder =
-        Host.CreateApplicationBuilder(args);
+    var builder = Host.CreateApplicationBuilder(args);
 
-    var csharpProjectPath =
-        GetCSharpProjectPath(
-            builder.Environment.ContentRootPath
-        );
-
-    await RegisterCSharpClient(
-        builder.Services,
-        csharpProjectPath
-    );
+    ConfigureWeselAjaServices(builder.Services);
 
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
         .WithToolsFromAssembly();
 
-    Console.Error.WriteLine();
-    Console.Error.WriteLine(
-        "WeselAja MCP Server"
-    );
-    Console.Error.WriteLine(
-        "=================="
-    );
-    Console.Error.WriteLine();
+    Console.Error.WriteLine("WeselAja MCP Server");
+    Console.Error.WriteLine("Transport : STDIO");
+    Console.Error.WriteLine("Status    : Ready");
 
-    Console.Error.WriteLine(
-        "Transport : STDIO"
-    );
-
-    Console.Error.WriteLine(
-        "Status    : Ready"
-    );
-
-    Console.Error.WriteLine();
-
-    await builder
-        .Build()
-        .RunAsync();
+    await builder.Build().RunAsync();
 }
 
-static async Task RunHttpServer(
-    string[] args)
+static async Task RunHttpServer(string[] args)
 {
-    var builder =
-        WebApplication.CreateBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 
-    var csharpProjectPath =
-        GetCSharpProjectPath(
-            builder.Environment.ContentRootPath
-        );
-
-    await RegisterCSharpClient(
-        builder.Services,
-        csharpProjectPath
-    );
+    ConfigureWeselAjaServices(builder.Services);
 
     builder.Services
         .AddMcpServer()
@@ -102,160 +64,88 @@ static async Task RunHttpServer(
         })
         .WithToolsFromAssembly();
 
-    var app =
-        builder.Build();
+    var app = builder.Build();
 
     app.MapMcp("/mcp");
 
     app.MapGet(
         "/health",
-        () =>
-            Results.Ok(
-                new
-                {
-                    success = true,
-                    service = "WeselAja MCP",
-                    transport = "Streamable HTTP"
-                }
-            )
-    );
-
-    var httpUrl =
-        (
-            Environment.GetEnvironmentVariable(
-                "MCP_HTTP_URL"
-            )
-            ?? "http://0.0.0.0:3001"
-        )
-        .Trim();
-
-    Console.Error.WriteLine();
-    Console.Error.WriteLine(
-        "WeselAja MCP Server"
-    );
-    Console.Error.WriteLine(
-        "=================="
-    );
-    Console.Error.WriteLine();
-
-    Console.Error.WriteLine(
-        "Transport : Streamable HTTP"
-    );
-
-    Console.Error.WriteLine(
-        $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp"
-    );
-
-    Console.Error.WriteLine(
-        $"Health    : {httpUrl.TrimEnd('/')}/health"
-    );
-
-    Console.Error.WriteLine(
-        "Status    : Ready"
-    );
-
-    Console.Error.WriteLine();
-
-    await app.RunAsync(
-        httpUrl
-    );
-}
-
-static string GetCSharpProjectPath(
-    string contentRootPath)
-{
-    var configuredPath =
-        Environment.GetEnvironmentVariable(
-            "XENITH_CSHARP_MCP_PROJECT"
-        );
-
-    if (!string.IsNullOrWhiteSpace(
-            configuredPath))
-    {
-        if (!File.Exists(
-                configuredPath))
+        () => Results.Ok(new
         {
-            throw new FileNotFoundException(
-                "C# MCP Server project was not found.",
-                configuredPath
-            );
-        }
+            success = true,
+            service = "WeselAja MCP",
+            transport = "Streamable HTTP"
+        })
+    );
 
-        return configuredPath;
-    }
+    var httpUrl = (
+        Environment.GetEnvironmentVariable("MCP_HTTP_URL")
+        ?? "http://0.0.0.0:3001"
+    ).Trim();
 
-    var defaultPath =
-        Path.GetFullPath(
-            Path.Combine(
-                contentRootPath,
-                "..",
-                "..",
-                "csharp",
-                "WeselAja",
-                "WeselAjaMcp.csproj"
-            )
-        );
+    Console.Error.WriteLine("WeselAja MCP Server");
+    Console.Error.WriteLine("Transport : Streamable HTTP");
+    Console.Error.WriteLine($"Endpoint  : {httpUrl.TrimEnd('/')}/mcp");
+    Console.Error.WriteLine($"Health    : {httpUrl.TrimEnd('/')}/health");
 
-    if (!File.Exists(
-            defaultPath))
-    {
-        throw new FileNotFoundException(
-            "C# MCP Server project was not found.",
-            defaultPath
-        );
-    }
-
-    return defaultPath;
+    await app.RunAsync(httpUrl);
 }
 
-static async Task RegisterCSharpClient(
-    IServiceCollection services,
-    string csharpProjectPath)
+static void ConfigureWeselAjaServices(
+    IServiceCollection services)
 {
-    var csharpTransport =
-        new StdioClientTransport(
-            new StdioClientTransportOptions
+    var enabledValue =
+        Environment.GetEnvironmentVariable("XENITH_ENABLED");
+
+    var options = new WeselAjaOptions
+    {
+        Enabled = !string.Equals(
+            enabledValue?.Trim(),
+            "false",
+            StringComparison.OrdinalIgnoreCase
+        ),
+
+        Title = (
+            Environment.GetEnvironmentVariable("XENITH_TITLE")
+            ?? "WeselAja"
+        ).Trim(),
+
+        Description = (
+            Environment.GetEnvironmentVariable("XENITH_DESCRIPTION")
+            ?? "Pay securely using WeselAja payment gateway."
+        ).Trim(),
+
+        Icon = "",
+
+        ApiKey = (
+            Environment.GetEnvironmentVariable("XENITH_API_KEY")
+            ?? string.Empty
+        ).Trim(),
+
+        SecretKey = (
+            Environment.GetEnvironmentVariable("XENITH_SECRET_KEY")
+            ?? string.Empty
+        ).Trim(),
+
+        ApiUrl = (
+            Environment.GetEnvironmentVariable("WESELAJA_API_URL")
+            ?? "https://sandbox.checkout.weselaja.id"
+        ).Trim()
+    };
+
+    services.AddSingleton(options);
+    services.AddSingleton<SignatureGenerator>();
+
+    services
+        .AddHttpClient<WeselAjaClient>()
+        .ConfigurePrimaryHttpMessageHandler(() =>
+            new HttpClientHandler
             {
-                Name =
-                    "WeselAja-CSharp",
+                UseProxy = false,
+                AutomaticDecompression =
+                    System.Net.DecompressionMethods.None,
+                MaxConnectionsPerServer = 1
+            });
 
-                Command =
-                    "dotnet",
-
-                Arguments =
-                [
-                    "run",
-                    "--project",
-                    csharpProjectPath,
-                    "--no-launch-profile"
-                ],
-
-                WorkingDirectory =
-                    Path.GetDirectoryName(
-                        csharpProjectPath
-                    )!,
-
-                StandardErrorLines =
-                    line =>
-                    {
-                        Console.Error.WriteLine(
-                            line
-                        );
-                    }
-            }
-        );
-
-    var csharpClient =
-        await McpClient.CreateAsync(
-            csharpTransport
-        );
-
-    var csharpMcpClient =
-        new CSharpMcpClient(
-            csharpClient
-        );
-
-    services.AddSingleton(
-        csharpMcpClient
-    );
+    services.AddSingleton<WeselAjaBlocksService>();
 }

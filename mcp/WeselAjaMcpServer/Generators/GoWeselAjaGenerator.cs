@@ -550,29 +550,21 @@ public sealed class GoWeselAjaGenerator
         )
 
         type Config struct {
-            APIURL
-                string
+            APIURL string
 
-            APIKey
-                string
+            APIKey string
 
-            SecretKey
-                string
+            SecretKey string
 
-            CustomerReference
-                string
+            CustomerReference string
 
-            CallbackURL
-                string
+            CallbackURL string
 
-            RedirectURL
-                string
+            RedirectURL string
 
-            Currency
-                string
+            Currency string
 
-            PaymentMethod
-                string
+            PaymentMethod string
         }
 
         func LoadConfig() (
@@ -694,7 +686,7 @@ public sealed class GoWeselAjaGenerator
             }
 
             for _, item :=
-                range []struct {
+                range ([]struct {
                     name  string
                     value string
                 }{
@@ -710,17 +702,15 @@ public sealed class GoWeselAjaGenerator
                         "WESELAJA_REDIRECT_URL",
                         c.RedirectURL,
                     },
-                } {
+                }) {
                 parsed, err :=
                     url.Parse(
                         item.value,
                     )
 
                 if err != nil ||
-                    (
-                        parsed.Scheme != "http" &&
-                        parsed.Scheme != "https"
-                    ) {
+                    (parsed.Scheme != "http" &&
+                        parsed.Scheme != "https") {
                     return fmt.Errorf(
                         "%s must be a valid HTTP or HTTPS URL",
                         item.name,
@@ -814,9 +804,7 @@ public sealed class GoWeselAjaGenerator
 
                 value :=
                     strings.TrimSpace(
-                        line[
-                            separator+1:
-                        ],
+                        line[separator+1:],
                     )
 
                 value =
@@ -842,22 +830,13 @@ public sealed class GoWeselAjaGenerator
                     value[0]
 
                 last :=
-                    value[
-                        len(value)-1
-                    ]
+                    value[len(value)-1]
 
-                if (
-                    first == '"' &&
-                    last == '"'
-                ) ||
-                    (
-                        first == '\'' &&
-                        last == '\''
-                    ) {
-                    return value[
-                        1:
-                        len(value)-1
-                    ]
+                if (first == '"' &&
+                    last == '"') ||
+                    (first == '\'' &&
+                        last == '\'') {
+                    return value[1 : len(value)-1]
                 }
             }
 
@@ -895,14 +874,11 @@ public sealed class GoWeselAjaGenerator
         }
 
         type APIError struct {
-            StatusCode
-                int
+            StatusCode int
 
-            Message
-                string
+            Message string
 
-            ResponseBody
-                string
+            ResponseBody string
         }
 
         func (
@@ -989,91 +965,63 @@ public sealed class GoWeselAjaGenerator
         }
 
         type CreatePaymentRequest struct {
-            Amount
-                int
+            Amount int
 
-            CustomerName
-                string
+            CustomerName string
 
-            Bank
-                string
+            Bank string
 
-            CustomerPhoneNumber
-                string
+            CustomerPhoneNumber string
 
-            Description
-                string
+            Description string
 
-            ReferenceCode
-                string
+            ReferenceCode string
         }
 
         type CreatePaymentResponse struct {
-            Success
-                bool `json:"success"`
+            Success bool `json:"success"`
 
-            ID
-                string `json:"id"`
+            ID string `json:"id"`
 
-            InitiatedAmount
-                FlexibleInt64 `json:"initiatedAmount"`
+            InitiatedAmount FlexibleInt64 `json:"initiatedAmount"`
 
-            PaymentAmount
-                any `json:"paymentAmount"`
+            PaymentAmount any `json:"paymentAmount"`
 
-            FeeAmount
-                any `json:"feeAmount"`
+            FeeAmount any `json:"feeAmount"`
 
-            Currency
-                string `json:"currency"`
+            Currency string `json:"currency"`
 
-            PaymentMethod
-                string `json:"paymentMethod"`
+            PaymentMethod string `json:"paymentMethod"`
 
-            PaymentChannel
-                string `json:"paymentChannel"`
+            PaymentChannel string `json:"paymentChannel"`
 
-            PaymentCode
-                string `json:"paymentCode"`
+            PaymentCode string `json:"paymentCode"`
 
-            PaymentCodeType
-                string `json:"paymentCodeType"`
+            PaymentCodeType string `json:"paymentCodeType"`
 
-            ReferenceCode
-                string `json:"referenceCode"`
+            ReferenceCode string `json:"referenceCode"`
 
-            CustomerReference
-                string `json:"customerReference"`
+            CustomerReference string `json:"customerReference"`
 
-            CustomerName
-                string `json:"customerName"`
+            CustomerName string `json:"customerName"`
 
-            Status
-                string `json:"status"`
+            Status string `json:"status"`
 
-            CreatedTime
-                string `json:"createdTime"`
+            CreatedTime string `json:"createdTime"`
 
-            UpdatedTime
-                string `json:"updatedTime"`
+            UpdatedTime string `json:"updatedTime"`
 
-            ExpirationTime
-                string `json:"expirationTime"`
+            ExpirationTime string `json:"expirationTime"`
 
-            Description
-                string `json:"description"`
+            Description string `json:"description"`
 
-            CallbackURL
-                string `json:"callbackUrl"`
+            CallbackURL string `json:"callbackUrl"`
 
-            RedirectURL
-                string `json:"redirectUrl"`
+            RedirectURL string `json:"redirectUrl"`
 
-            Error
-                string `json:"error"`
+            Error string `json:"error"`
 
-            Metadata
-                map[string]any `json:"metadata"`
+            Metadata map[string]any `json:"metadata"`
         }
 
         """;
@@ -1228,6 +1176,7 @@ public sealed class GoWeselAjaGenerator
             "crypto/hmac"
             "crypto/sha256"
             "encoding/base64"
+            "strings"
         )
 
         func GenerateSignature(
@@ -1258,8 +1207,7 @@ public sealed class GoWeselAjaGenerator
                     []byte(payload),
                 )
 
-            return
-                base64.StdEncoding.EncodeToString(
+            return base64.StdEncoding.EncodeToString(
                     mac.Sum(nil),
                 )
         }
@@ -1292,8 +1240,7 @@ public sealed class GoWeselAjaGenerator
                     []byte(payload),
                 )
 
-            return
-                base64.StdEncoding.EncodeToString(
+            return base64.StdEncoding.EncodeToString(
                     mac.Sum(nil),
                 )
         }
@@ -1319,8 +1266,7 @@ public sealed class GoWeselAjaGenerator
                     secret,
                 )
 
-            return
-                hmac.Equal(
+            return hmac.Equal(
                     []byte(expected),
                     []byte(
                         strings.TrimSpace(
@@ -1356,11 +1302,9 @@ public sealed class GoWeselAjaGenerator
             "/v1/payins"
 
         type WeselAjaClient struct {
-            config
-                Config
+            config Config
 
-            httpClient
-                *http.Client
+            httpClient *http.Client
         }
 
         func NewClient(
@@ -1387,8 +1331,7 @@ public sealed class GoWeselAjaGenerator
                                 req *http.Request,
                                 via []*http.Request,
                             ) error {
-                                return
-                                    http.ErrUseLastResponse
+                                return http.ErrUseLastResponse
                             },
                     },
             }, nil
@@ -1423,9 +1366,7 @@ public sealed class GoWeselAjaGenerator
                 validatePaymentRequest(
                     payment,
                 ); err != nil {
-                return
-                    CreatePaymentResponse{},
-                    err
+                return CreatePaymentResponse{}, err
             }
 
             paymentChannel,
@@ -1435,9 +1376,7 @@ public sealed class GoWeselAjaGenerator
                 )
 
             if err != nil {
-                return
-                    CreatePaymentResponse{},
-                    err
+                return CreatePaymentResponse{}, err
             }
 
             referenceCode :=
@@ -1456,18 +1395,14 @@ public sealed class GoWeselAjaGenerator
                 validateReference(
                     referenceCode,
                 ); err != nil {
-                return
-                    CreatePaymentResponse{},
-                    err
+                return CreatePaymentResponse{}, err
             }
 
             if err :=
                 validateReference(
                     client.config.CustomerReference,
                 ); err != nil {
-                return
-                    CreatePaymentResponse{},
-                    err
+                return CreatePaymentResponse{}, err
             }
 
             payload :=
@@ -1531,9 +1466,7 @@ public sealed class GoWeselAjaGenerator
                 )
 
             if err != nil {
-                return
-                    CreatePaymentResponse{},
-                    fmt.Errorf(
+                return CreatePaymentResponse{}, fmt.Errorf(
                         "failed to encode payment request: %w",
                         err,
                     )
@@ -1565,9 +1498,7 @@ public sealed class GoWeselAjaGenerator
                 generateIdempotencyKey()
 
             if err != nil {
-                return
-                    CreatePaymentResponse{},
-                    fmt.Errorf(
+                return CreatePaymentResponse{}, fmt.Errorf(
                         "failed to generate idempotency key: %w",
                         err,
                     )
@@ -1592,9 +1523,7 @@ public sealed class GoWeselAjaGenerator
                 )
 
             if err != nil {
-                return
-                    CreatePaymentResponse{},
-                    fmt.Errorf(
+                return CreatePaymentResponse{}, fmt.Errorf(
                         "failed to create HTTP request: %w",
                         err,
                     )
@@ -1652,9 +1581,7 @@ public sealed class GoWeselAjaGenerator
                 )
 
             if err != nil {
-                return
-                    CreatePaymentResponse{},
-                    fmt.Errorf(
+                return CreatePaymentResponse{}, fmt.Errorf(
                         "unable to connect to WeselAja: %w",
                         err,
                     )
@@ -1669,9 +1596,7 @@ public sealed class GoWeselAjaGenerator
                 )
 
             if err != nil {
-                return
-                    CreatePaymentResponse{},
-                    fmt.Errorf(
+                return CreatePaymentResponse{}, fmt.Errorf(
                         "failed to read WeselAja response: %w",
                         err,
                     )
@@ -1682,9 +1607,7 @@ public sealed class GoWeselAjaGenerator
                     responseBody,
                 ),
             ) == 0 {
-                return
-                    CreatePaymentResponse{},
-                    &APIError{
+                return CreatePaymentResponse{}, &APIError{
                         StatusCode:
                             response.StatusCode,
 
@@ -1703,9 +1626,7 @@ public sealed class GoWeselAjaGenerator
                     responseBody,
                     &decoded,
                 ); err != nil {
-                return
-                    CreatePaymentResponse{},
-                    &APIError{
+                return CreatePaymentResponse{}, &APIError{
                         StatusCode:
                             response.StatusCode,
 
@@ -1724,9 +1645,7 @@ public sealed class GoWeselAjaGenerator
 
             if response.StatusCode < 200 ||
                 response.StatusCode >= 300 {
-                return
-                    CreatePaymentResponse{},
-                    &APIError{
+                return CreatePaymentResponse{}, &APIError{
                         StatusCode:
                             response.StatusCode,
 
@@ -1745,17 +1664,14 @@ public sealed class GoWeselAjaGenerator
                     }
             }
 
-            var result
-                CreatePaymentResponse
+            var result CreatePaymentResponse
 
             if err :=
                 json.Unmarshal(
                     responseBody,
                     &result,
                 ); err != nil {
-                return
-                    CreatePaymentResponse{},
-                    fmt.Errorf(
+                return CreatePaymentResponse{}, fmt.Errorf(
                         "failed to parse WeselAja response: %w",
                         err,
                     )
@@ -2004,9 +1920,7 @@ public sealed class GoWeselAjaGenerator
 
             result,
                 ok :=
-                decoded.(
-                    map[string]any,
-                )
+                decoded.(map[string]any)
 
             if !ok {
                 return nil,
@@ -2062,18 +1976,12 @@ public sealed class GoWeselAjaGenerator
 
             for _, character :=
                 range value {
-                if (
-                    character >= 'a' &&
-                    character <= 'z'
-                ) ||
-                    (
-                        character >= 'A' &&
-                        character <= 'Z'
-                    ) ||
-                    (
-                        character >= '0' &&
-                        character <= '9'
-                    ) ||
+                if (character >= 'a' &&
+                    character <= 'z') ||
+                    (character >= 'A' &&
+                        character <= 'Z') ||
+                    (character >= '0' &&
+                        character <= '9') ||
                     character == '-' ||
                     character == '_' {
                     continue
@@ -2090,21 +1998,16 @@ public sealed class GoWeselAjaGenerator
         func generateReference(
             customerName string,
         ) string {
-            var builder
-                strings.Builder
+            var builder strings.Builder
 
             for _, character :=
                 range strings.ToUpper(
                     customerName,
                 ) {
-                if (
-                    character >= 'A' &&
-                    character <= 'Z'
-                ) ||
-                    (
-                        character >= '0' &&
-                        character <= '9'
-                    ) ||
+                if (character >= 'A' &&
+                    character <= 'Z') ||
+                    (character >= '0' &&
+                        character <= '9') ||
                     character == '-' ||
                     character == '_' {
                     builder.WriteRune(
@@ -2155,8 +2058,7 @@ public sealed class GoWeselAjaGenerator
                     err
             }
 
-            return
-                "go-" +
+            return "go-" +
                 hex.EncodeToString(
                     bytesBuffer,
                 ),
@@ -2169,9 +2071,7 @@ public sealed class GoWeselAjaGenerator
         ) string {
             object,
                 ok :=
-                payload.(
-                    map[string]any,
-                )
+                payload.(map[string]any)
 
             if !ok {
                 return fallback
@@ -2217,6 +2117,7 @@ public sealed class GoWeselAjaGenerator
 
         import (
             "context"
+            "encoding/json"
             "fmt"
             "log"
             "os"
@@ -2349,12 +2250,40 @@ public sealed class GoWeselAjaGenerator
         package main
 
         import (
+            "bufio"
             "encoding/json"
             "log"
             "net/http"
             "os"
             "strconv"
+            "strings"
         )
+
+        func LoadDotEnv(fileName string) {
+            file, err := os.Open(fileName)
+            if err != nil {
+                return
+            }
+            defer file.Close()
+
+            scanner := bufio.NewScanner(file)
+            for scanner.Scan() {
+                line := strings.TrimSpace(scanner.Text())
+                if line == "" || strings.HasPrefix(line, "#") {
+                    continue
+                }
+
+                key, value, ok := strings.Cut(line, "=")
+                if !ok || strings.TrimSpace(key) == "" {
+                    continue
+                }
+                key = strings.TrimSpace(key)
+                value = strings.Trim(strings.TrimSpace(value), "\"'")
+                if os.Getenv(key) == "" {
+                    _ = os.Setenv(key, value)
+                }
+            }
+        }
 
         func main() {
             LoadDotEnv(".env")
@@ -2478,13 +2407,65 @@ public sealed class GoWeselAjaGenerator
         package main
 
         import (
+            "bufio"
+            "crypto/hmac"
+            "crypto/sha256"
+            "encoding/base64"
             "encoding/json"
             "io"
             "log"
             "net/http"
             "os"
             "strconv"
+            "strings"
         )
+
+        func LoadDotEnv(fileName string) {
+            file, err := os.Open(fileName)
+            if err != nil {
+                return
+            }
+            defer file.Close()
+
+            scanner := bufio.NewScanner(file)
+            for scanner.Scan() {
+                line := strings.TrimSpace(scanner.Text())
+                if line == "" || strings.HasPrefix(line, "#") {
+                    continue
+                }
+
+                key, value, ok := strings.Cut(line, "=")
+                if !ok || strings.TrimSpace(key) == "" {
+                    continue
+                }
+                key = strings.TrimSpace(key)
+                value = strings.Trim(strings.TrimSpace(value), "\"'")
+                if os.Getenv(key) == "" {
+                    _ = os.Setenv(key, value)
+                }
+            }
+        }
+
+        func VerifyCallbackSignature(
+            method string,
+            uri string,
+            rawBody string,
+            timestamp string,
+            signature string,
+            secret string,
+        ) bool {
+            if signature == "" {
+                return false
+            }
+            payload := method + "\n" + uri + "\n" + rawBody + "\n" + timestamp
+            mac := hmac.New(sha256.New, []byte(secret))
+            _, _ = mac.Write([]byte(payload))
+            expected := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+            return hmac.Equal(
+                []byte(expected),
+                []byte(strings.TrimSpace(signature)),
+            )
+        }
 
         func main() {
             LoadDotEnv(".env")
