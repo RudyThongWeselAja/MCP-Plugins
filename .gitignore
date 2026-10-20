@@ -32,4 +32,4 @@ local.properties
 .DS_Store
 Thumbs.db
 
-.yml
+/mcp/WeselAjaMcpServer/docker-compose.yml
