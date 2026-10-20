@@ -1,621 +1,631 @@
 # WeselAja MCP
 
-MCP server untuk mengintegrasikan pembayaran WeselAja dengan AI client yang mendukung Model Context Protocol (MCP).
-=======
-WeselAja MCP is a multi-implementation Model Context Protocol (MCP) server for WeselAja payment integration.
+WeselAja MCP is a Model Context Protocol (MCP) server built with .NET 10 that integrates WeselAja payment services with AI clients. It provides payment tools and code generation capabilities through a unified MCP interface.
 
-The project provides a unified MCP interface across multiple implementations:
+The server supports two deployment methods:
 
-`C#` `PHP` `Python` `WooCommerce` `Odoo`
+- **Docker Compose** — recommended for running the server in the background.
+- **Local .NET execution** — suitable for development, debugging, and running the server without Docker.
 
-It also includes a standalone Go API client in
-[`mcp/WeselAjaMcpServer/generated/go/weselaja-golang`](mcp/WeselAjaMcpServer/generated/go/weselaja-golang).
-The standalone Python client is available in
-[`mcp/WeselAjaMcpServer/generated/python/weselaja-python`](mcp/WeselAjaMcpServer/generated/python/weselaja-python).
+WeselAja MCP adalah server Model Context Protocol (MCP) berbasis .NET 10 yang mengintegrasikan layanan pembayaran WeselAja dengan AI client. Server ini menyediakan tools pembayaran dan kemampuan generator kode melalui satu antarmuka MCP.
 
-The MCP implementations expose the same tools:
+Server dapat dijalankan dengan dua cara:
 
-`is_weselaja_active`  
-`get_weselaja_payment_method`  
-`create_weselaja_payment`
+- **Docker Compose** — direkomendasikan untuk menjalankan server di background.
+- **Menjalankan .NET secara lokal** — cocok untuk development, debugging, dan penggunaan tanpa Docker.
 
-## Requirements
+## Features / Fitur
 
-### Central MCP
+- Check whether the WeselAja integration is enabled.
+- Retrieve configured payment method and channel information.
+- Create WeselAja Pay In transactions.
+- Generate integration projects for supported platforms.
+- Support STDIO and Streamable HTTP transports.
+- Run with Docker Compose or directly through the .NET SDK.
+- Save generated projects to the configured output directory.
 
-`.NET 10 SDK` `Node.js` `npm`
+Fitur yang tersedia:
 
-Check:
+- Memeriksa status integrasi WeselAja.
+- Mengambil informasi metode dan kanal pembayaran yang dikonfigurasi.
+- Membuat transaksi Pay In WeselAja.
+- Menghasilkan proyek integrasi untuk platform yang didukung.
+- Mendukung transport STDIO dan Streamable HTTP.
+- Menjalankan server menggunakan Docker Compose atau .NET SDK secara langsung.
+- Menyimpan proyek hasil generator ke direktori output yang dikonfigurasi.
 
-```bash
-dotnet --version
-node --version
-npm --version
+## Requirements / Persyaratan
+
+### Docker deployment
+
+- Docker Desktop.
+- Docker Compose.
+- WeselAja API credentials.
+- A configured `.env` file.
+
+### Local development
+
+- .NET 10 SDK.
+- Git.
+- WeselAja API credentials.
+- A configured `.env` file.
+
+Untuk deployment Docker, kamu membutuhkan Docker Desktop dan Docker Compose. Untuk menjalankan server secara lokal tanpa Docker, kamu cukup memerlukan .NET 10 SDK beserta konfigurasi API WeselAja yang valid.
+
+## Project Structure / Struktur Proyek
+
+```text
+MCP-Plugins/
+├── .gitignore
+├── README.md
+└── mcp/
+    └── WeselAjaMcpServer/
+        ├── .dockerignore
+        ├── Dockerfile
+        ├── docker-compose.yml
+        ├── docker-compose.yml.example
+        ├── WeselAjaMcpServer.csproj
+        ├── Program.cs
+        ├── Configuration/
+        ├── Models/
+        ├── Security/
+        ├── Services/
+        ├── Tools/
+        ├── Generators/
+        ├── .env
+        └── generated/
 ```
 
-### PHP
+The structure above is representative. Some directories may contain additional files as the project evolves.
 
-Required when using the PHP implementation:
+Struktur di atas merupakan gambaran umum. Beberapa direktori dapat berisi file tambahan seiring perkembangan proyek.
 
-`PHP` `PHP cURL extension`
+## Configuration / Konfigurasi
 
-Check:
+Create a `.env` file inside the MCP server directory:
 
-```bash
-php --version
+```text
+mcp/WeselAjaMcpServer/.env
 ```
 
-### Python
+Buat file `.env` di direktori server MCP.
 
-Required when using the Python implementation:
-
-`Python 3` `requests`
-
-Install:
-
-```bash
-pip install requests
-```
-
-Check:
-
-```bash
-python --version
-```
-
-### Go
-
-The standalone Go client requires Go 1.23 or later and uses only the standard
-library. See the [Go integration README](mcp/WeselAjaMcpServer/generated/go/weselaja-golang/README.md)
-for configuration and usage.
-
-### Standalone Python client
-
-The standalone Python integration requires Python 3.11 or later. Setup and
-usage instructions are in the [Python integration README](mcp/WeselAjaMcpServer/generated/python/weselaja-python/README.md).
-
-### WooCommerce
-
-Required when using the WooCommerce implementation:
-
-`WordPress` `WooCommerce` `WooCommerce WeselAja plugin`
-
-### Odoo
-
-Required when using the Odoo implementation:
-
-`Odoo 18` `PostgreSQL` `Odoo payment module` `weselaja_payment custom module included in this repository`
-
----
-
-> > > > > > > e373e93 (1. https://github.com/RudyThongWeselAja/MCP-Plugins/issues/8)
-
-## Configuration
-
-Buat file `.env` di folder `mcp/WeselAjaMcpServer/`.
+Example configuration / Contoh konfigurasi:
 
 ```env
 XENITH_ENABLED=true
-XENITH_API_KEY=
-XENITH_SECRET_KEY=
-WESELAJA_API_URL=https://sandbox.checkout.weselaja.id
+XENITH_TITLE=WeselAja
+XENITH_DESCRIPTION=Pay securely using WeselAja payment gateway.
 
-XENITH_ODOO_URL=http://127.0.0.1:8069
-XENITH_ODOO_API_TOKEN=
+XENITH_API_KEY=your_sandbox_api_key
+XENITH_SECRET_KEY=your_sandbox_secret_key
+WESELAJA_API_URL=your_sandbox_api_base_url
 
 MCP_TRANSPORT=http
-MCP_HTTP_URL=http://0.0.0.0:3001
-
-WESELAJA_CURRENCY=IDR
-WESELAJA_PAYMENT_METHOD=VIRTUAL_ACCOUNT
-
-WESELAJA_CALLBACK_URL=.../payment/weselaja/callback
-WESELAJA_REDIRECT_URL=.../payment/weselaja/return
+MCP_HTTP_URL=http://127.0.0.1:3001
 ```
 
-Sesuaikan API key, secret key, API URL, callback URL, dan redirect URL dengan konfigurasi akun WeselAja kamu.
+Replace the placeholder values with the credentials and API base URL assigned to your WeselAja account. The example above configures HTTP transport for local development.
 
-Gunakan kredensial sandbox saat pengembangan. Jangan commit file `.env` ke GitHub.
+Ganti nilai placeholder dengan kredensial dan base URL API yang sesuai dengan akun WeselAja kamu. Contoh tersebut menggunakan transport HTTP untuk development lokal.
 
-## Run MCP Server
+### Environment Variables
 
-Pastikan .NET SDK sudah terpasang, lalu jalankan dari root repository:
+| Variable | Description |
+|---|---|
+| `XENITH_ENABLED` | Enables or disables the integration. |
+| `XENITH_TITLE` | Integration title. |
+| `XENITH_DESCRIPTION` | Integration description. |
+| `XENITH_API_KEY` | API key used for authentication. |
+| `XENITH_SECRET_KEY` | Secret key used for request signing. |
+| `WESELAJA_API_URL` | WeselAja API base URL. |
+| `MCP_TRANSPORT` | Transport mode: `stdio` or `http`. |
+| `MCP_HTTP_URL` | HTTP server binding address when HTTP transport is enabled. |
 
-<<<<<<< HEAD
+**Security notes / Catatan keamanan**
 
-````powershell
-=======
-```text
-mcp/
-└── WeselAjaMcpServer/
-    ├── Program.cs
-    ├── WeselAjaMcpServer.csproj
-    ├── WeselAjaTools.cs
-    ├── Models/
-    ├── Clients/
-    │   ├── CSharpMcpClient.cs
-    │   ├── OdooWeselAjaClient.cs
-    │   ├── PhpWeselAjaClient.cs
-    │   ├── PythonWeselAjaClient.cs
-    │   └── WooCommerceWeselAjaClient.cs
-    ├── .env
-    └── generated/
-        └── go/
-            └── weselaja-golang/
-````
+- Never commit `.env` or API credentials to Git.
+- Use sandbox credentials during development.
+- Do not publish secret keys in issues, logs, or screenshots.
+- Do not expose the MCP endpoint publicly without suitable authentication and network security.
 
----
+Jangan commit file `.env` maupun kredensial API ke Git. Gunakan kredensial sandbox untuk pengujian dan jangan membuka endpoint MCP ke publik tanpa pengamanan yang sesuai.
 
-## WeselAja API
+## Option 1: Run with Docker Compose / Menjalankan dengan Docker Compose
 
-The MCP implementations communicate with the WeselAja Sandbox API:
+Docker Compose is recommended when you want the MCP server to run in the background without keeping a terminal session open.
 
-```text
-https://sandbox.checkout.weselaja.id
+Docker Compose direkomendasikan jika kamu ingin server berjalan di background tanpa harus membiarkan terminal server tetap terbuka.
+
+### 1. Open the MCP server directory
+
+```powershell
+cd C:\Kerja\XenithPay\mcp\WeselAjaMcpServer
 ```
 
-Payment endpoint:
+Adjust the path if the repository is located elsewhere.
 
-```text
-POST /v1/payins
+### 2. Build and start the server
+
+For the first run, or after changing application source code or Docker build configuration:
+
+```powershell
+docker compose up -d --build
 ```
 
-### Request Signature
+For subsequent runs when a rebuild is not required:
 
-The request uses HMAC-SHA256 signature authentication.
-
-The signature payload is generated using:
-
-```text
-POST
-/v1/payins
-TIMESTAMP
-RAW_BODY
+```powershell
+docker compose up -d
 ```
 
-The generated HMAC-SHA256 signature is encoded using Base64.
+The `-d` option starts the container in the background.
 
-### Required Headers
+Opsi `-d` menjalankan container di background sehingga server tetap berjalan tanpa terminal interaktif.
 
-```text
-Xenith-Api-Key
-Xenith-Request-Timestamp
-Xenith-Request-Signature
-X-Idempotency-Key
+### 3. Check container status
+
+```powershell
+docker compose ps
 ```
 
----
+The container should show a running status.
 
-## MCP Tools
+Container seharusnya menunjukkan status berjalan, seperti `Up`.
 
-The server exposes the following MCP tools:
+### 4. Check the health endpoint
 
-| Tool                          | Description                                      |
-| ----------------------------- | ------------------------------------------------ |
-| `is_weselaja_active`          | Check whether the WeselAja integration is active |
-| `get_weselaja_payment_method` | Get the configured WeselAja payment method       |
-| `create_weselaja_payment`     | Create a new WeselAja payment                    |
-
----
-
-## Running the MCP Server
-
-Navigate to the central MCP directory:
-
-```bash
->>>>>>> e373e93 (1. https://github.com/RudyThongWeselAja/MCP-Plugins/issues/8)
-cd mcp/WeselAjaMcpServer
-dotnet restore
-dotnet build
-dotnet run
+```powershell
+Invoke-RestMethod http://localhost:3001/health
 ```
 
-MCP server menggunakan port `3001` sesuai konfigurasi di atas.
-
-Endpoint MCP:
-
-```text
-http://127.0.0.1:3001/mcp
-```
-
-Untuk penggunaan lokal, pastikan MCP server berjalan sebelum menghubungkan AI client.
-
-## Connect to MCP Client
-
-Tambahkan konfigurasi berikut pada MCP client yang mendukung Streamable HTTP:
+A successful response should look similar to:
 
 ```json
 {
-  "mcpServers": {
-    "weselaja": {
-      "type": "http",
-      "url": "http://127.0.0.1:3001/mcp"
-    }
-  }
+  "success": true,
+  "service": "WeselAja MCP",
+  "transport": "Streamable HTTP"
 }
 ```
 
-Jika menggunakan MCP Inspector, jalankan:
+A successful health check confirms that the HTTP application is responding. It does not by itself verify payment API authentication or transaction creation.
+
+Health check yang berhasil memastikan aplikasi HTTP merespons, tetapi tidak otomatis membuktikan autentikasi API atau pembuatan transaksi pembayaran berhasil.
+
+### 5. Docker Compose commands
+
+Run these commands from the MCP server directory.
+
+**Start the server**
+
+```powershell
+docker compose up -d
+```
+
+**Rebuild and start**
+
+```powershell
+docker compose up -d --build
+```
+
+**Check status**
+
+```powershell
+docker compose ps
+```
+
+**View logs**
+
+```powershell
+docker compose logs -f
+```
+
+Press `Ctrl+C` to stop following the logs. The container continues running.
+
+Tekan `Ctrl+C` untuk berhenti mengikuti log. Container tetap berjalan.
+
+**Restart the server**
+
+```powershell
+docker compose restart
+```
+
+**Stop the server**
+
+```powershell
+docker compose down
+```
+
+The `down` command stops and removes the Compose-managed container and network. Files in the host's mounted `generated` directory remain available.
+
+Perintah `down` menghentikan dan menghapus container serta jaringan yang dikelola Compose. File pada direktori `generated` di komputer host tetap tersedia.
+
+### Automatic restart / Restart otomatis
+
+The Compose configuration uses `restart: unless-stopped`. Docker can restart the container after an unexpected stop or Docker restart, provided Docker Desktop is running and the container has not been explicitly stopped.
+
+Konfigurasi Compose menggunakan `restart: unless-stopped`. Docker dapat menjalankan kembali container setelah berhenti secara tidak terduga atau setelah Docker direstart, selama Docker Desktop aktif dan container tidak dihentikan secara eksplisit.
+
+### Generated output / Hasil generator
+
+The Compose configuration mounts the host's `generated` directory into the container at:
+
+```text
+/app/generated
+```
+
+Generated projects should therefore be available on the host under:
+
+```text
+mcp/WeselAjaMcpServer/generated/
+```
+
+Hasil generator akan tersedia di direktori host tersebut selama generator menulis ke lokasi output yang dikonfigurasi.
+
+## Option 2: Run Locally Without Docker / Menjalankan Secara Lokal Tanpa Docker
+
+This option runs the MCP server directly through the .NET 10 SDK. Docker Desktop is not required.
+
+Opsi ini menjalankan server MCP secara langsung menggunakan .NET 10 SDK. Docker Desktop tidak diperlukan.
+
+### 1. Install the .NET 10 SDK
+
+Install the .NET 10 SDK on your development machine.
+
+Verify the installation:
+
+```powershell
+dotnet --version
+```
+
+The installed SDK should be version 10.x.
+
+### 2. Open the MCP server directory
+
+```powershell
+cd C:\Kerja\XenithPay\mcp\WeselAjaMcpServer
+```
+
+### 3. Configure the `.env` file
+
+Make sure `.env` exists in the current directory and contains valid credentials and the correct API base URL.
+
+Untuk menjalankan server secara lokal melalui HTTP, gunakan konfigurasi berikut di `.env`:
+
+```env
+MCP_TRANSPORT=http
+MCP_HTTP_URL=http://127.0.0.1:3001
+```
+
+Keep the other WeselAja environment variables from the configuration section.
+
+Pertahankan juga environment variable WeselAja lainnya, termasuk API key, secret key, status integrasi, dan base URL.
+
+### 4. Restore dependencies
+
+```powershell
+dotnet restore
+```
+
+This downloads and restores the project's NuGet dependencies.
+
+Perintah ini memulihkan dependensi NuGet yang dibutuhkan proyek.
+
+### 5. Build the project
+
+```powershell
+dotnet build
+```
+
+Confirm that the build completes successfully before starting the server.
+
+Pastikan build berhasil sebelum menjalankan server.
+
+### 6. Start the MCP server
+
+```powershell
+dotnet run
+```
+
+The server should start using the transport configured in `.env`.
+
+Server akan berjalan menggunakan transport yang dikonfigurasi di `.env`.
+
+Keep this terminal open while the server is running. Press `Ctrl+C` to stop the local process.
+
+Biarkan terminal tetap terbuka selama server berjalan. Tekan `Ctrl+C` untuk menghentikan proses lokal.
+
+### 7. Verify the HTTP server
+
+Open another PowerShell window and run:
+
+```powershell
+Invoke-RestMethod http://localhost:3001/health
+```
+
+If the server is healthy, it should return a response similar to:
+
+```json
+{
+  "success": true,
+  "service": "WeselAja MCP",
+  "transport": "Streamable HTTP"
+}
+```
+
+The local MCP endpoint is:
+
+```text
+http://localhost:3001/mcp
+```
+
+### Local development workflow / Alur development lokal
+
+When you change the source code, stop the running process with `Ctrl+C`, then start it again:
+
+```powershell
+dotnet run
+```
+
+If you modify project dependencies, restore them:
+
+```powershell
+dotnet restore
+```
+
+If you need to verify compilation independently:
+
+```powershell
+dotnet build
+```
+
+For local development, these commands do not require a Docker image rebuild.
+
+Untuk development lokal, perubahan source code tidak memerlukan rebuild Docker image.
+
+## Using STDIO Transport / Menggunakan Transport STDIO
+
+The application also supports STDIO transport for MCP clients that launch the server as a local process.
+
+Aplikasi juga mendukung transport STDIO untuk MCP client yang menjalankan server sebagai proses lokal.
+
+To use STDIO, set this value in `.env`:
+
+```env
+MCP_TRANSPORT=stdio
+```
+
+Then launch the application using:
+
+```powershell
+dotnet run
+```
+
+Configure your MCP client to launch the application using the appropriate executable or .NET command and working directory. The exact client configuration depends on the MCP application you use.
+
+Konfigurasikan MCP client agar menjalankan aplikasi melalui perintah .NET atau executable yang sesuai dengan working directory proyek. Format konfigurasinya bergantung pada aplikasi MCP client yang digunakan.
+
+STDIO and HTTP are different transport modes. When STDIO is selected, do not expect the HTTP health endpoint or `/mcp` URL to be available from that process.
+
+STDIO dan HTTP merupakan transport yang berbeda. Ketika menggunakan STDIO, endpoint health maupun URL `/mcp` tidak tersedia dari proses tersebut.
+
+## MCP Endpoint / Endpoint MCP
+
+When running with HTTP transport, the server exposes these endpoints.
+
+Ketika server menggunakan transport HTTP, endpoint berikut tersedia.
+
+| Purpose | URL |
+|---|---|
+| MCP endpoint | `http://localhost:3001/mcp` |
+| Health endpoint | `http://localhost:3001/health` |
+
+Use `http://localhost:3001/mcp` when connecting from an MCP client on the same computer.
+
+Gunakan `http://localhost:3001/mcp` untuk menghubungkan MCP client yang berjalan pada komputer yang sama.
+
+For Docker, the current port mapping binds to localhost, so the service is not directly exposed to other machines on the network.
+
+Pada Docker, pemetaan port saat ini dibatasi ke localhost sehingga layanan tidak langsung terbuka untuk komputer lain melalui jaringan.
+
+## MCP Tools
+
+The server exposes four MCP tools.
+
+Server menyediakan empat tools MCP berikut.
+
+| Tool | Description |
+|---|---|
+| `is_weselaja_active` | Checks whether the WeselAja integration is enabled. |
+| `get_weselaja_payment_method` | Retrieves configured payment method and channel information. |
+| `create_weselaja_payment` | Creates a WeselAja payment transaction. |
+| `generate_weselaja_integration` | Generates integration source code using a registered generator target. |
+
+The exact inputs for each tool are defined by its MCP tool schema.
+
+Input setiap tool mengikuti skema MCP yang disediakan oleh server.
+
+### Testing with MCP Inspector
+
+Start the MCP server using HTTP transport, then open another terminal:
 
 ```powershell
 npx @modelcontextprotocol/inspector
 ```
 
-Pilih koneksi Streamable HTTP dan masukkan URL MCP server di atas.
+Open the local URL printed by Inspector in your browser.
 
-## Available Tools
+Configure the connection as follows:
 
-### `is_weselaja_active`
+| Setting | Value |
+|---|---|
+| Transport | Streamable HTTP |
+| URL | `http://localhost:3001/mcp` |
 
-Memeriksa apakah integrasi WeselAja sedang aktif.
+Click **Connect** and verify that the four tools appear.
 
-### `get_weselaja_payment_method`
+Klik **Connect** dan pastikan keempat tools muncul.
 
-Melihat metode pembayaran dan kanal bank yang tersedia pada konfigurasi.
+For a basic connectivity test, run `is_weselaja_active`. Only run the payment creation tool when you intend to create a transaction in the configured API environment.
 
-### `create_weselaja_payment`
+Untuk menguji koneksi, jalankan `is_weselaja_active` terlebih dahulu. Jalankan tool pembuatan pembayaran hanya ketika memang ingin membuat transaksi pada lingkungan API yang dikonfigurasi.
 
-Membuat transaksi pembayaran Virtual Account melalui WeselAja.
+## Code Generation / Pembuatan Kode
 
-Contoh argumen:
+The `generate_weselaja_integration` tool generates integration projects using the targets registered in `CodeGeneratorTools.cs`.
 
-```json
-{
-  "amount": 10000,
-  "customerName": "Andi",
-  "bank": "BCA",
-  "customerPhoneNumber": "081234567890",
-  "description": "Sandbox payment test",
-  "referenceCode": "MCP-TEST-001"
-}
+Tool `generate_weselaja_integration` menghasilkan proyek integrasi menggunakan target yang didaftarkan di `CodeGeneratorTools.cs`.
+
+The repository contains generator implementations for various platforms. The targets exposed by the MCP tool depend on the current registration in the code generator tool. Refer to the implementation for the authoritative list of available targets.
+
+Repository ini memiliki implementasi generator untuk berbagai platform. Target yang dapat dipanggil melalui MCP mengikuti daftar yang didaftarkan pada code generator tool. Gunakan implementasi tersebut sebagai acuan daftar target yang tersedia.
+
+Generated source code is output, not a replacement for the MCP server. Inspect and test generated projects in their intended environments before using them in production.
+
+Source code hasil generator merupakan output terpisah, bukan pengganti server MCP. Periksa dan uji proyek yang dihasilkan pada lingkungan target sebelum digunakan di sistem produksi.
+
+## Creating Payments / Membuat Pembayaran
+
+The `create_weselaja_payment` tool initiates a Pay In transaction through the configured WeselAja API.
+
+Tool `create_weselaja_payment` memulai transaksi Pay In melalui API WeselAja yang dikonfigurasi.
+
+Before creating a payment:
+
+1. Verify that the API base URL is correct.
+2. Use sandbox credentials during testing.
+3. Provide valid transaction and customer information.
+4. Check that the selected payment channel is supported.
+5. Use a unique reference code for each transaction.
+
+Sebelum membuat pembayaran, pastikan base URL benar, gunakan kredensial sandbox untuk pengujian, berikan data transaksi yang valid, periksa dukungan kanal pembayaran, dan gunakan reference code yang unik.
+
+A successful health check confirms that the MCP application responds. It does not guarantee that the external WeselAja API is reachable or that payment creation will succeed.
+
+Health check yang berhasil hanya memastikan aplikasi MCP merespons. Hal itu tidak menjamin API WeselAja dapat diakses atau pembuatan pembayaran akan berhasil.
+
+## Troubleshooting / Pemecahan Masalah
+
+### Docker container is not running
+
+```powershell
+docker compose ps
+docker compose logs --tail 100
 ```
 
-Bank yang didukung dalam konfigurasi: `BRI`, `Mandiri`, `BNI`, `Permata`, `CIMB`, dan `BCA`.
+### Port 3001 is already in use
 
-Gunakan tool ini hanya ketika ingin membuat transaksi pembayaran. Nilai `amount` menggunakan rupiah, sehingga `10000` berarti Rp10.000.
+Check whether another service or container is using port `3001`. Stop the conflicting service or adjust the Docker port mapping if appropriate.
 
-### `generate_weselaja_integration`
+Periksa apakah port `3001` sedang digunakan oleh layanan atau container lain.
 
-Menghasilkan source code integrasi WeselAja untuk platform yang didukung.
+### Local .NET build fails
 
-Contoh untuk Odoo 18:
+Verify the installed SDK:
 
-```json
-{
-  "target": "odoo",
-  "projectName": "weselaja_odoo",
-  "odooVersion": "18.0",
-  "includeExample": true,
-  "includeTests": true,
-  "overwrite": false
-}
+```powershell
+dotnet --version
 ```
 
-Target generator yang tersedia pada versi repository saat ini:
+Restore dependencies and build again:
 
-- `python`
-- `csharp`
-- `php`
-- `go`
-- `javascript`
-- `typescript`
-- `java`
-- `odoo`
-
-Generator WooCommerce memerlukan implementasi dan registrasi target `woocommerce` sebelum dapat digunakan.
-
-Hasil generate disimpan di folder `generated/` pada MCP server. Tool ini hanya menghasilkan source code dan tidak membuat transaksi pembayaran.
-
-## Odoo Integration
-
-Untuk menggunakan integrasi Odoo, pastikan addon WeselAja sudah terpasang dan konfigurasi API serta webhook sudah benar.
-
-<<<<<<< HEAD
-Jika middleware Odoo menggunakan Bearer token, konfigurasikan token melalui pengaturan yang sesuai pada integrasi kamu. Jangan membagikan token tersebut ke repository publik.
-=======
-The C# implementation is one of the payment implementations supported by the central MCP server.
-
-The central MCP server starts the C# implementation through the configured project path.
-
-Run the central MCP server:
-
-```bash
-cd mcp/WeselAjaMcpServer
+```powershell
+dotnet restore
 dotnet build
-dotnet run
 ```
 
-The C# implementation communicates with the central MCP server through the configured MCP transport.
+Review the compiler output if the build still fails.
 
----
+### MCP client cannot connect
 
-## PHP Implementation
+For HTTP transport, verify that the server is running and check:
 
-The PHP implementation requires:
+```powershell
+Invoke-RestMethod http://localhost:3001/health
+```
+
+Confirm that the MCP client URL is:
 
 ```text
-PHP
-PHP cURL extension
+http://localhost:3001/mcp
 ```
 
-Check PHP:
+For STDIO transport, ensure that the client launches the server using the correct command and working directory instead of attempting to connect through HTTP.
 
-```bash
-php --version
+Untuk transport STDIO, pastikan client menjalankan server dengan command dan working directory yang benar, bukan mencoba terhubung melalui HTTP.
+
+### WeselAja API request fails
+
+Check the API base URL, credentials, request signature, request payload, and supported payment channel.
+
+Periksa base URL API, kredensial, signature request, payload, dan kanal pembayaran yang digunakan.
+
+### Generated files cannot be found
+
+Check the generator response and the configured output directory. When using Docker Compose, also verify that the `generated` bind mount points to the intended host directory.
+
+Periksa respons generator, direktori output yang dikonfigurasi, serta bind mount `generated` ketika menggunakan Docker Compose.
+
+## Quick Reference / Referensi Cepat
+
+### Docker Compose
+
+```powershell
+# Run from mcp/WeselAjaMcpServer
+
+# Start the server
+docker compose up -d
+
+# Rebuild and start
+docker compose up -d --build
+
+# Check status
+docker compose ps
+
+# View logs
+docker compose logs -f
+
+# Restart the server
+docker compose restart
+
+# Stop the server
+docker compose down
 ```
 
-The PHP implementation communicates with the WeselAja Sandbox API using the configured API credentials.
+### Local .NET without Docker
 
-Make sure the following values are correctly configured:
+```powershell
+# Run from mcp/WeselAjaMcpServer
 
-```env
-XENITH_API_KEY=...
-XENITH_SECRET_KEY=...
-WESELAJA_API_URL=https://sandbox.checkout.weselaja.id
-```
+# Restore dependencies
+dotnet restore
 
----
-
-## Python Implementation
-
-The Python implementation requires Python 3 and the `requests` package.
-
-Install the dependency:
-
-```bash
-pip install requests
-```
-
-Check Python:
-
-```bash
-python --version
-```
-
-The Python implementation uses the configured WeselAja API credentials and API URL.
-
----
-
-## Go Integration
-
-The standalone Go client creates signed WeselAja pay-ins, maps supported banks
-to payment channels, and reads credentials from environment variables or `.env`.
-See the [Go integration README](mcp/WeselAjaMcpServer/generated/go/weselaja-golang/README.md)
-for setup, API signing details, and examples.
-
----
-
-## WooCommerce Implementation
-
-The WooCommerce implementation requires:
-
-```text
-WordPress
-WooCommerce
-WooCommerce WeselAja plugin
-```
-
-The WooCommerce implementation provides the WeselAja payment integration through WooCommerce and communicates with the central MCP server using the configured MCP endpoint.
-
----
-
-## Odoo Implementation
-
-The Odoo implementation requires:
-
-```text
-Odoo 18
-PostgreSQL
-Odoo payment module
-weselaja_payment
-```
-
-The custom Odoo module is included in:
-
-```text
-odoo/addons/weselaja_payment
-```
-
-### Odoo MCP Endpoint
-
-The Odoo MCP endpoint is:
-
-```text
-http://localhost:8069/weselaja/mcp
-```
-
-The central MCP server connects to Odoo using:
-
-```env
-XENITH_ODOO_URL=...
-XENITH_ODOO_API_TOKEN=...
-```
-
-The Odoo provider must be installed and configured before payment requests can be processed.
-
-### Odoo Module
-
-Module name:
-
-```text
-weselaja_payment
-```
-
-The module provides the WeselAja payment provider and MCP endpoint.
-
----
-
-## Recommended Setup Order
-
-```text
-1. Configure .env
-2. Configure WeselAja Sandbox credentials
-3. Configure the required implementation
-4. Install and configure Odoo / WooCommerce when required
-5. Start the central MCP server
-6. Verify the /health endpoint
-7. Start MCP Inspector
-8. Connect to /mcp
-9. Test the available MCP tools
-10. Test payment creation
-```
-
----
-
-> > > > > > > e373e93 (1. https://github.com/RudyThongWeselAja/MCP-Plugins/issues/8)
-
-## Troubleshooting
-
-- **MCP tidak tersambung:** pastikan server berjalan dan URL `/mcp` benar.
-- **API gagal tersambung:** periksa `WESELAJA_API_URL` dan koneksi jaringan.
-- **Signature invalid:** periksa API key, secret key, timestamp, serta format signature.
-- **Callback tidak diterima:** pastikan URL callback dapat dijangkau dari internet dan validasi signature sudah sesuai.
-- **Generator gagal:** jalankan `dotnet build` dan pastikan target platform tersedia pada versi repository.
-
-## Security
-
-Jangan menyimpan API key, secret key, Bearer token, atau kredensial lainnya di source code atau repository publik.
-
-<<<<<<< HEAD
-Selalu gunakan sandbox untuk pengujian sebelum beralih ke production.
-=======
-Make sure `.NET 10 SDK` is installed.
-
-Then run:
-
-```bash
-cd mcp/WeselAjaMcpServer
+# Build the project
 dotnet build
+
+# Start the server
 dotnet run
 ```
 
----
+## Security / Keamanan
 
-### MCP Inspector Cannot Connect
+- Keep `.env` out of version control.
+- Never publish API keys or secret keys.
+- Use sandbox credentials during development.
+- Restrict access to the MCP endpoint.
+- Do not expose the HTTP endpoint publicly without suitable authentication, HTTPS, and network controls.
+- Review generated source code before production use.
 
-Make sure the MCP server is running:
-
-```text
-http://127.0.0.1:3001
-```
-
-Verify the health endpoint:
-
-```text
-http://127.0.0.1:3001/health
-```
-
-Make sure MCP Inspector uses:
-
-```text
-http://127.0.0.1:3001/mcp
-```
-
-Do not use:
-
-```text
-http://0.0.0.0:3001/mcp
-```
+- Jangan masukkan `.env` ke version control.
+- Jangan membagikan API key atau secret key.
+- Gunakan kredensial sandbox selama development.
+- Batasi akses ke endpoint MCP.
+- Jangan membuka endpoint HTTP ke publik tanpa autentikasi, HTTPS, dan kontrol jaringan yang sesuai.
+- Periksa source code hasil generator sebelum digunakan di produksi.
 
 ---
 
-### Odoo Connection Problem
+**WeselAja MCP supports both Docker Compose deployment and local .NET execution. Choose the method that best fits your development or deployment workflow.**
 
-Check the Odoo URL:
-
-```env
-XENITH_ODOO_URL=http://localhost:8069
-```
-
-Check the Odoo MCP endpoint:
-
-```text
-http://localhost:8069/weselaja/mcp
-```
-
-Make sure:
-
-```text
-weselaja_payment
-```
-
-is installed and the Odoo provider is active.
-
----
-
-### Payment Request Failed
-
-Verify:
-
-```env
-XENITH_API_KEY=...
-XENITH_SECRET_KEY=...
-WESELAJA_API_URL=https://sandbox.checkout.weselaja.id
-```
-
-Also verify that:
-
-- the request body is valid JSON
-- the request timestamp is valid
-- the HMAC signature is generated from the exact request body
-- the `X-Idempotency-Key` header is present
-- the configured payment channel is supported by WeselAja
-
----
-
-## Quick Start
-
-### Start the MCP Server
-
-```bash
-cd mcp/WeselAjaMcpServer
-dotnet run
-```
-
-### Verify the Server
-
-```bash
-curl http://127.0.0.1:3001/health
-```
-
-### Start MCP Inspector
-
-Open another terminal:
-
-```bash
-npx @modelcontextprotocol/inspector
-```
-
-Connect to:
-
-```text
-http://127.0.0.1:3001/mcp
-```
-
-Use:
-
-```text
-Transport: Streamable HTTP
-```
-
-Then test:
-
-```text
-is_weselaja_active
-get_weselaja_payment_method
-create_weselaja_payment
-```
-
----
-
-## Supported Implementations
-
-| Implementation             | Status                |
-| -------------------------- | --------------------- |
-| C#                         | Supported             |
-| PHP                        | Supported             |
-| Python                     | Supported             |
-| Python (standalone client) | Standalone API client |
-| Go                         | Standalone API client |
-| WooCommerce                | Supported             |
-| Odoo                       | Supported             |
+**WeselAja MCP mendukung deployment menggunakan Docker Compose maupun menjalankan .NET secara lokal. Pilih cara yang sesuai dengan kebutuhan development atau deployment kamu.**
