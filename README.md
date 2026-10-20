@@ -1,6 +1,5 @@
 # WeselAja MCP
 
-<<<<<<< HEAD
 MCP server untuk mengintegrasikan pembayaran WeselAja dengan AI client yang mendukung Model Context Protocol (MCP).
 =======
 WeselAja MCP is a multi-implementation Model Context Protocol (MCP) server for WeselAja payment integration.
@@ -620,5 +619,3 @@ create_weselaja_payment
 | Go                         | Standalone API client |
 | WooCommerce                | Supported             |
 | Odoo                       | Supported             |
-
-> > > > > > > e373e93 (1. https://github.com/RudyThongWeselAja/MCP-Plugins/issues/8)
