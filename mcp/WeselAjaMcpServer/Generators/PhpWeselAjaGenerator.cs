@@ -1709,6 +1709,10 @@ public sealed class PhpWeselAjaGenerator
                 $headers = [
                     'Content-Type: application/json',
                     'Accept: application/json',
+                    'User-Agent: Python-urllib/3.13',
+                    'Accept-Encoding: identity',
+                    'Connection: close',
+                    'Expect:',
                     'Xenith-Api-Key: ' .
                         $this->config->apiKey,
                     'Xenith-Request-Timestamp: ' .
@@ -1720,6 +1724,9 @@ public sealed class PhpWeselAjaGenerator
                 ];
 
                 $curlOptions = [
+                    CURLOPT_PROXY =>
+                        '',
+
                     CURLOPT_URL =>
                         $url,
 
@@ -1795,16 +1802,16 @@ public sealed class PhpWeselAjaGenerator
                 if (
                     $responseBody === false
                 ) {
-                    $error =
-                        curl_error(
-                            $curl
-                        );
+                    $error = curl_error($curl);
+                    curl_close($curl);
 
                     throw new WeselAjaApiException(
                         'Unable to connect to WeselAja: ' .
                         $error
                     );
                 }
+
+                curl_close($curl);
 
                 if (
                     !is_string(
@@ -1820,6 +1827,37 @@ public sealed class PhpWeselAjaGenerator
                         'HTTP ' .
                         $statusCode,
                         $statusCode
+                    );
+                }
+
+                if (
+                    $statusCode < 200
+                    ||
+                    $statusCode >= 300
+                ) {
+                    $errorPayload = json_decode(
+                        $responseBody,
+                        true
+                    );
+
+                    $errorMessage = is_array($errorPayload)
+                        ? $this->extractError(
+                            $errorPayload,
+                            $responseBody
+                        )
+                        : trim(substr($responseBody, 0, 1000));
+
+                    if ($errorMessage === '') {
+                        $errorMessage = 'Unknown API error.';
+                    }
+
+                    throw new WeselAjaApiException(
+                        'WeselAja returned HTTP ' .
+                        $statusCode .
+                        ': ' .
+                        $errorMessage,
+                        $statusCode,
+                        $responseBody
                     );
                 }
 
@@ -1852,21 +1890,6 @@ public sealed class PhpWeselAjaGenerator
                 ) {
                     throw new WeselAjaApiException(
                         'Unexpected WeselAja response format.',
-                        $statusCode,
-                        $responseBody
-                    );
-                }
-
-                if (
-                    $statusCode < 200
-                    ||
-                    $statusCode >= 300
-                ) {
-                    throw new WeselAjaApiException(
-                        $this->extractError(
-                            $decoded,
-                            $responseBody
-                        ),
                         $statusCode,
                         $responseBody
                     );
@@ -1989,6 +2012,10 @@ public sealed class PhpWeselAjaGenerator
 
                 $headers = [
                     'Accept: application/json',
+                    'User-Agent: Python-urllib/3.13',
+                    'Accept-Encoding: identity',
+                    'Connection: close',
+                    'Expect:',
                     'Xenith-Api-Key: ' .
                         $this->config->apiKey,
                     'Xenith-Request-Timestamp: ' .
@@ -1998,6 +2025,9 @@ public sealed class PhpWeselAjaGenerator
                 ];
 
                 $curlOptions = [
+                    CURLOPT_PROXY =>
+                        '',
+
                     CURLOPT_URL =>
                         $url,
 
@@ -2070,13 +2100,16 @@ public sealed class PhpWeselAjaGenerator
                 if (
                     $responseBody === false
                 ) {
+                    $error = curl_error($curl);
+                    curl_close($curl);
+
                     throw new WeselAjaApiException(
                         'Unable to connect to WeselAja: ' .
-                        curl_error(
-                            $curl
-                        )
+                        $error
                     );
                 }
+
+                curl_close($curl);
 
                 if (
                     !is_string(
@@ -2091,6 +2124,37 @@ public sealed class PhpWeselAjaGenerator
                         'Empty response from WeselAja. HTTP ' .
                         $statusCode,
                         $statusCode
+                    );
+                }
+
+                if (
+                    $statusCode < 200
+                    ||
+                    $statusCode >= 300
+                ) {
+                    $errorPayload = json_decode(
+                        $responseBody,
+                        true
+                    );
+
+                    $errorMessage = is_array($errorPayload)
+                        ? $this->extractError(
+                            $errorPayload,
+                            $responseBody
+                        )
+                        : trim(substr($responseBody, 0, 1000));
+
+                    if ($errorMessage === '') {
+                        $errorMessage = 'Unknown API error.';
+                    }
+
+                    throw new WeselAjaApiException(
+                        'WeselAja returned HTTP ' .
+                        $statusCode .
+                        ': ' .
+                        $errorMessage,
+                        $statusCode,
+                        $responseBody
                     );
                 }
 
@@ -2123,21 +2187,6 @@ public sealed class PhpWeselAjaGenerator
                 ) {
                     throw new WeselAjaApiException(
                         'Unexpected WeselAja response format.',
-                        $statusCode,
-                        $responseBody
-                    );
-                }
-
-                if (
-                    $statusCode < 200
-                    ||
-                    $statusCode >= 300
-                ) {
-                    throw new WeselAjaApiException(
-                        $this->extractError(
-                            $decoded,
-                            $responseBody
-                        ),
                         $statusCode,
                         $responseBody
                     );

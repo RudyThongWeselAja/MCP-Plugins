@@ -668,6 +668,8 @@ public sealed class CSharpWeselAjaGenerator
     private const string
         ConfigTemplate =
         """
+        using WeselAja.Integration.Exceptions;
+
         namespace WeselAja.Integration.Configuration;
 
         public sealed class WeselAjaConfig
@@ -1401,7 +1403,7 @@ public sealed class CSharpWeselAjaGenerator
                 "/v1/payins";
 
             private const string UserAgent =
-                "WeselAja-CSharp/1.0";
+                "Python-urllib/3.13";
 
             private readonly HttpClient
                 _httpClient;
@@ -2393,7 +2395,7 @@ public sealed class CSharpWeselAjaGenerator
                                     error =
                                         "Missing x-middleware-timestamp"
                                 },
-                                statusCode =
+                                statusCode:
                                     StatusCodes
                                         .Status400BadRequest);
                         }
@@ -2409,7 +2411,7 @@ public sealed class CSharpWeselAjaGenerator
                                     error =
                                         "Missing x-middleware-signature"
                                 },
-                                statusCode =
+                                statusCode:
                                     StatusCodes
                                         .Status400BadRequest);
                         }
@@ -2446,7 +2448,7 @@ public sealed class CSharpWeselAjaGenerator
                                     error =
                                         "Invalid callback signature"
                                 },
-                                statusCode =
+                                statusCode:
                                     StatusCodes
                                         .Status401Unauthorized);
                         }
