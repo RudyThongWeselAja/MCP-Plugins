@@ -4,6 +4,8 @@ namespace WeselAjaMcpServer.Generators;
 
 public sealed class OdooWeselAjaGenerator
 {
+    public const string GeneratorVersion = "odoo-weselaja-v2-shortlink";
+
     public GenerationResult Generate(
         string projectName,
         string odooVersion,
@@ -172,12 +174,14 @@ public sealed class OdooWeselAjaGenerator
     {
         var fullPath = Path.GetFullPath(path);
         var fullRoot = Path.GetFullPath(root);
-
         var relative = Path.GetRelativePath(fullRoot, fullPath);
 
         if (relative == ".." ||
             relative.StartsWith(
                 ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal) ||
+            relative.StartsWith(
+                ".." + Path.AltDirectorySeparatorChar,
                 StringComparison.Ordinal) ||
             Path.IsPathRooted(relative))
         {
@@ -193,26 +197,36 @@ public sealed class OdooWeselAjaGenerator
         var files = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase)
         {
+            ["GENERATOR_VERSION.txt"] =
+                GeneratorVersion + Environment.NewLine,
+
             ["__manifest__.py"] = ManifestTemplate,
             ["__init__.py"] = RootInitTemplate,
+
             ["models/__init__.py"] = ModelsInitTemplate,
             ["models/payment_provider.py"] = PaymentProviderTemplate,
             ["models/payment_transaction.py"] = PaymentTransactionTemplate,
+
             ["controllers/__init__.py"] = ControllersInitTemplate,
             ["controllers/main.py"] = ControllerTemplate,
+
             ["lib/__init__.py"] = LibInitTemplate,
             ["lib/weselaja_api.py"] = ApiClientTemplate,
+
             ["views/payment_provider_views.xml"] = ProviderViewsTemplate,
             ["views/payment_weselaja_templates.xml"] = PaymentTemplatesTemplate,
             ["views/payment_transaction_views.xml"] = TransactionViewsTemplate,
+
             ["data/payment_provider_data.xml"] = ProviderDataTemplate,
+
             [".gitignore"] = GitIgnoreTemplate,
             ["README.md"] = ReadmeTemplate
         };
 
         if (includeExample)
         {
-            files["examples/payin_payload.json"] = ExamplePayloadTemplate;
+            files["examples/short_link_query.json"] =
+                ExamplePayloadTemplate;
         }
 
         if (includeTests)
@@ -226,9 +240,9 @@ public sealed class OdooWeselAjaGenerator
 
     private const string ManifestTemplate = """
     {
-        'name': 'WeselAja Payment Provider',
-        'summary': 'WeselAja Virtual Account payment integration',
-        'version': '__ODOO_VERSION__.1.0.0',
+        'name': 'WeselAja Hosted Checkout',
+        'summary': 'WeselAja V1 Short Link payment integration',
+        'version': '__ODOO_VERSION__.2.0.0',
         'category': 'Accounting/Payment Providers',
         'author': 'WeselAja Integration Generator',
         'license': 'LGPL-3',
@@ -273,13 +287,14 @@ public sealed class OdooWeselAjaGenerator
     """;
 
     private const string PaymentProviderTemplate = """
-    from urllib.parse import urlsplit
+    from urllib.parse import urlencode, urlsplit
 
     from odoo import _, api, fields, models
     from odoo.exceptions import ValidationError
 
 
     CALLBACK_PATH = '/payment/weselaja/webhook'
+    RETURN_PATH = '/payment/weselaja/return'
 
 
     class PaymentProvider(models.Model):
@@ -309,28 +324,12 @@ public sealed class OdooWeselAjaGenerator
             required_if_provider='weselaja',
             copy=False,
             groups='base.group_system',
-        )
-
-        weselaja_webhook_secret = fields.Char(
-            string='Webhook Signature Secret',
-            required_if_provider='weselaja',
-            copy=False,
-            groups='base.group_system',
-        )
-
-        weselaja_payment_channel = fields.Selection(
-            selection=[
-                ('BRI.VA', 'BRI Virtual Account'),
-                ('MDR.VA', 'Mandiri Virtual Account'),
-                ('BNI.VA', 'BNI Virtual Account'),
-                ('PTB.VA', 'Permata Virtual Account'),
-                ('CIMB.VA', 'CIMB Virtual Account'),
-                ('BCA.VA', 'BCA Virtual Account'),
-            ],
-            string='Virtual Account Bank',
-            default='BRI.VA',
-            required_if_provider='weselaja',
-            copy=False,
+            help=(
+                'Merchant customer reference registered at WeselAja. '
+                'For auto-settlement merchants with multiple settlement '
+                'accounts and no default account, prefix this value with '
+                'the exact case-sensitive subAccount code.'
+            ),
         )
 
         weselaja_sandbox_url = fields.Char(
@@ -352,8 +351,18 @@ public sealed class OdooWeselAjaGenerator
         weselaja_callback_url = fields.Char(
             string='Webhook URL Override',
             help=(
-                "Optional public HTTPS webhook URL. Leave empty to use "
-                "the public Odoo base URL."
+                'Optional public HTTPS callback URL. Leave empty to use '
+                'the public Odoo base URL.'
+            ),
+            copy=False,
+            groups='base.group_system',
+        )
+
+        weselaja_redirect_url = fields.Char(
+            string='Return URL Override',
+            help=(
+                'Optional HTTPS return URL. Leave empty to use the '
+                'Odoo payment return page.'
             ),
             copy=False,
             groups='base.group_system',
@@ -363,6 +372,7 @@ public sealed class OdooWeselAjaGenerator
             'weselaja_sandbox_url',
             'weselaja_production_url',
             'weselaja_callback_url',
+            'weselaja_redirect_url',
         )
         def _check_weselaja_urls(self):
             for provider in self.filtered(
@@ -371,10 +381,9 @@ public sealed class OdooWeselAjaGenerator
                 urls = [
                     provider.weselaja_sandbox_url,
                     provider.weselaja_production_url,
+                    provider.weselaja_callback_url,
+                    provider.weselaja_redirect_url,
                 ]
-
-                if provider.weselaja_callback_url:
-                    urls.append(provider.weselaja_callback_url)
 
                 for url in urls:
                     if not url:
@@ -385,17 +394,21 @@ public sealed class OdooWeselAjaGenerator
                     if (
                         parsed.scheme != 'https'
                         or not parsed.netloc
+                        or parsed.username
+                        or parsed.password
                         or parsed.query
                         or parsed.fragment
                     ):
                         raise ValidationError(_(
                             'WeselAja URLs must be valid HTTPS URLs without '
-                            'query strings or fragments.'
+                            'credentials, query strings, or fragments.'
                         ))
 
-                callback_url = provider.weselaja_callback_url
-                if callback_url:
-                    callback_path = urlsplit(callback_url).path
+                if provider.weselaja_callback_url:
+                    callback_path = urlsplit(
+                        provider.weselaja_callback_url
+                    ).path
+
                     if callback_path != CALLBACK_PATH:
                         raise ValidationError(_(
                             'The webhook URL path must be %s.',
@@ -416,6 +429,8 @@ public sealed class OdooWeselAjaGenerator
             if (
                 parsed.scheme != 'https'
                 or not parsed.netloc
+                or parsed.username
+                or parsed.password
                 or parsed.query
                 or parsed.fragment
             ):
@@ -444,11 +459,39 @@ public sealed class OdooWeselAjaGenerator
                 or parsed.fragment
             ):
                 raise ValidationError(_(
-                    'The webhook URL must use HTTPS and end with %s.',
+                    'Configure a public HTTPS webhook URL ending with %s.',
                     CALLBACK_PATH,
                 ))
 
             return callback_url
+
+        def _get_weselaja_return_url(self, reference, access_token):
+            self.ensure_one()
+
+            base_return_url = (
+                self.weselaja_redirect_url.strip()
+                if self.weselaja_redirect_url
+                else self.get_base_url().rstrip('/') + RETURN_PATH
+            )
+
+            parsed = urlsplit(base_return_url)
+
+            if (
+                parsed.scheme != 'https'
+                or not parsed.netloc
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValidationError(_(
+                    'Configure a valid HTTPS WeselAja return URL.'
+                ))
+
+            query = urlencode({
+                'reference': reference,
+                'access_token': access_token,
+            })
+
+            return base_return_url + '?' + query
 
         def _get_supported_currencies(self):
             self.ensure_one()
@@ -464,12 +507,23 @@ public sealed class OdooWeselAjaGenerator
 
         def _get_default_payment_method_codes(self):
             self.ensure_one()
-            default_codes = super()._get_default_payment_method_codes()
 
             if self.code == 'weselaja':
-                return {'weselaja_va'}
+                return {'weselaja_checkout'}
 
-            return default_codes
+            return super()._get_default_payment_method_codes()
+
+         def _get_redirect_form_view(self, is_validation=False):
+            self.ensure_one()
+
+            if self.code == 'weselaja':
+                return self.env.ref(
+                    '__MODULE_NAME__.redirect_form'
+                )
+
+            return super()._get_redirect_form_view(
+                is_validation=is_validation
+            )
 
         def _get_removal_values(self):
             values = super()._get_removal_values()
@@ -477,19 +531,18 @@ public sealed class OdooWeselAjaGenerator
                 'weselaja_api_key': False,
                 'weselaja_secret_key': False,
                 'weselaja_customer_reference': False,
-                'weselaja_webhook_secret': False,
+                'weselaja_callback_url': False,
+                'weselaja_redirect_url': False,
             })
             return values
     """;
 
     private const string ApiClientTemplate = """
-    import base64
-    import hashlib
-    import hmac
     import json
     import logging
+    import re
     from datetime import datetime, timezone
-    from urllib.parse import urlencode
+    from urllib.parse import quote, urlsplit
 
     import requests
 
@@ -499,10 +552,11 @@ public sealed class OdooWeselAjaGenerator
 
     _logger = logging.getLogger(__name__)
 
-    PAYINS_URI = '/v1/payins'
+    SHORT_LINK_URI = '/v1/short-link'
+    PAYIN_SESSION_PREFIX = '/v2/payins/'
 
 
-    def build_request_signature(secret, method, uri, timestamp, body):
+    def build_request_signature(secret, method, uri, timestamp, body=''):
         message = (
             method.upper()
             + '\n'
@@ -513,59 +567,75 @@ public sealed class OdooWeselAjaGenerator
             + body
         )
 
-        digest = hmac.new(
+        digest = __import__('hmac').new(
             secret.encode('utf-8'),
             message.encode('utf-8'),
-            hashlib.sha256,
+            __import__('hashlib').sha256,
         ).digest()
 
-        return base64.b64encode(digest).decode('ascii')
+        return __import__('base64').b64encode(
+            digest
+        ).decode('ascii')
 
 
-    def build_webhook_signature(secret, method, path, raw_body, timestamp):
-        message = (
-            method.upper().encode('utf-8')
-            + b'\n'
-            + path.encode('utf-8')
-            + b'\n'
-            + raw_body
-            + b'\n'
-            + timestamp.encode('utf-8')
+    def make_timestamp():
+        return (
+            datetime.now(timezone.utc)
+            .isoformat(timespec='milliseconds')
+            .replace('+00:00', 'Z')
         )
 
-        digest = hmac.new(
-            secret.encode('utf-8'),
-            message,
-            hashlib.sha256,
-        ).digest()
 
-        return base64.b64encode(digest).decode('ascii')
+    def normalize_customer_phone(phone):
+        if not phone:
+            return None
+
+        digits = ''.join(
+            character
+            for character in str(phone)
+            if character.isdigit()
+        )
+
+        if digits.startswith('08') or digits.startswith('62'):
+            return digits
+
+        return None
 
 
-    def is_webhook_timestamp_valid(timestamp, now=None):
-        if not timestamp:
-            return False
+    def is_valid_reference_code(reference):
+        return bool(
+            isinstance(reference, str)
+            and re.fullmatch(r'[A-Za-z0-9_-]+', reference)
+        )
 
-        try:
-            parsed_timestamp = datetime.fromisoformat(
-                timestamp.replace('Z', '+00:00')
-            )
-        except (AttributeError, ValueError):
-            return False
 
-        if parsed_timestamp.tzinfo is None:
-            parsed_timestamp = parsed_timestamp.replace(
-                tzinfo=timezone.utc
-            )
+    def unwrap_payin(response_data):
+        current = response_data
 
-        current_time = now or datetime.now(timezone.utc)
+        for _ in range(5):
+            if not isinstance(current, dict):
+                break
 
-        age_seconds = abs((
-            current_time.astimezone(timezone.utc)
-            - parsed_timestamp.astimezone(timezone.utc)
-        ).total_seconds())
+            nested = None
 
-        return age_seconds <= 300
+            for key in ('data', 'payin', 'payment', 'result'):
+                value = current.get(key)
+
+                if isinstance(value, dict):
+                    nested = value
+                    break
+
+            if nested is None:
+                break
+
+            current = nested
+
+        if not isinstance(current, dict):
+            raise ValidationError(_(
+                'WeselAja returned an unexpected payment response.'
+            ))
+
+        return current
 
 
     def map_payin_status(status):
@@ -574,6 +644,7 @@ public sealed class OdooWeselAjaGenerator
 
         return {
             'SUCCESS': 'done',
+            'SUCCESSFUL': 'done',
             'PAID': 'done',
             'COMPLETED': 'done',
             'SETTLED': 'done',
@@ -586,155 +657,22 @@ public sealed class OdooWeselAjaGenerator
             'PENDING': 'pending',
             'PROCESSING': 'pending',
             'INITIATED': 'pending',
+            'ACTIVE': 'pending',
         }.get(status.strip().upper())
-
-
-    def extract_payins(response_data):
-        if isinstance(response_data, list):
-            return [
-                item for item in response_data
-                if isinstance(item, dict)
-            ]
-
-        if not isinstance(response_data, dict):
-            return []
-
-        for key in ('data', 'items', 'results', 'payins', 'records'):
-            value = response_data.get(key)
-
-            if isinstance(value, list):
-                return [
-                    item for item in value
-                    if isinstance(item, dict)
-                ]
-
-            if isinstance(value, dict):
-                nested = extract_payins(value)
-                if nested:
-                    return nested
-
-        return []
-
-
-    def unwrap_payin(response_data):
-        current = response_data
-
-        for _ in range(4):
-            if not isinstance(current, dict):
-                break
-
-            nested = None
-
-            for key in ('data', 'payin', 'payment', 'result'):
-                value = current.get(key)
-                if isinstance(value, dict):
-                    nested = value
-                    break
-
-            if nested is None:
-                break
-
-            current = nested
-
-        if not isinstance(current, dict):
-            raise ValidationError(_(
-                'WeselAja returned an unexpected pay-in response.'
-            ))
-
-        return current
 
 
     class WeselAjaApi:
         def __init__(self, provider):
             self.provider = provider
 
-        def _request(
-            self,
-            method,
-            uri,
-            payload=None,
-            idempotency_key=None,
-            signature_uri=None,
-        ):
-            method = method.upper()
+        def _base_url(self):
+            return self.provider._get_weselaja_api_base_url()
 
-            if not self.provider.weselaja_api_key:
-                raise ValidationError(_(
-                    'Configure the WeselAja API Key first.'
-                ))
-
-            if not self.provider.weselaja_secret_key:
-                raise ValidationError(_(
-                    'Configure the WeselAja API Secret Key first.'
-                ))
-
-            raw_body = ''
-
-            if payload is not None:
-                raw_body = json.dumps(
-                    payload,
-                    separators=(',', ':'),
-                    ensure_ascii=False,
-                )
-
-            timestamp = (
-                datetime.now(timezone.utc)
-                .isoformat(timespec='milliseconds')
-                .replace('+00:00', 'Z')
-            )
-
-            canonical_uri = signature_uri or uri
-
-            signature = build_request_signature(
-                self.provider.weselaja_secret_key,
-                method,
-                canonical_uri,
-                timestamp,
-                raw_body,
-            )
-
-            headers = {
-                'Accept': 'application/json',
-                'Xenith-Api-Key': self.provider.weselaja_api_key,
-                'Xenith-Request-Timestamp': timestamp,
-                'Xenith-Request-Signature': signature,
-            }
-
-            if payload is not None:
-                headers['Content-Type'] = 'application/json'
-
-            if idempotency_key:
-                headers['X-Idempotency-Key'] = idempotency_key
-
-            url = self.provider._get_weselaja_api_base_url() + uri
-
-            try:
-                response = requests.request(
-                    method,
-                    url,
-                    data=(
-                        raw_body.encode('utf-8')
-                        if payload is not None
-                        else None
-                    ),
-                    headers=headers,
-                    timeout=(10, 30),
-                    allow_redirects=False,
-                )
-            except requests.RequestException as error:
-                _logger.warning(
-                    'Could not connect to WeselAja API using %s.',
-                    method,
-                )
-                raise ValidationError(_(
-                    'Could not connect to WeselAja. Check the API URL '
-                    'and server network connection.'
-                )) from error
-
+        def _decode_response(self, response, endpoint):
             try:
                 response_data = response.json()
             except ValueError:
-                response_data = {}
+                response_data = None
 
             if not response.ok:
                 message = 'The payment provider rejected the request.'
@@ -743,12 +681,19 @@ public sealed class OdooWeselAjaGenerator
                     message = (
                         response_data.get('message')
                         or response_data.get('error')
+                        or response_data.get('detail')
                         or message
                     )
 
+                if response_data is None:
+                    body_text = (response.text or '').strip()
+                    if body_text:
+                        message = body_text[:300]
+
                 _logger.warning(
-                    'WeselAja API returned HTTP %s.',
+                    'WeselAja API returned HTTP %s for %s.',
                     response.status_code,
+                    endpoint,
                 )
 
                 raise ValidationError(_(
@@ -764,49 +709,178 @@ public sealed class OdooWeselAjaGenerator
 
             return response_data
 
-        def create_payin(self, payload, idempotency_key):
-            response_data = self._request(
-                'POST',
-                PAYINS_URI,
-                payload=payload,
-                idempotency_key=idempotency_key,
-                signature_uri=PAYINS_URI,
+        def create_short_link(self, payload):
+            if not self.provider.weselaja_api_key:
+                raise ValidationError(_(
+                    'Configure the WeselAja API Key first.'
+                ))
+
+            if not self.provider.weselaja_customer_reference:
+                raise ValidationError(_(
+                    'Configure the WeselAja Customer Reference first.'
+                ))
+
+            params = dict(payload)
+            params['apiKey'] = self.provider.weselaja_api_key
+
+            try:
+                response = requests.get(
+                    self._base_url() + SHORT_LINK_URI,
+                    params=params,
+                    headers={
+                        'Accept': 'application/json',
+                        'User-Agent': 'WeselAja-Odoo/2.0',
+                    },
+                    timeout=(5, 10),
+                    allow_redirects=False,
+                )
+            except requests.RequestException as error:
+                _logger.warning(
+                    'Could not connect to WeselAja Short Link API.'
+                )
+
+                raise ValidationError(_(
+                    'Could not connect to WeselAja. Check the API URL '
+                    'and server network connection.'
+                )) from error
+
+            if response.status_code == 409:
+                try:
+                    existing = self.get_payin_session(
+                        payload['referenceCode'],
+                        sync=False,
+                    )
+
+                    if (
+                        existing.get('referenceCode')
+                        == payload['referenceCode']
+                    ):
+                        return existing
+
+                except (ValidationError, KeyError):
+                    pass
+
+            response_data = self._decode_response(
+                response,
+                'GET /v1/short-link',
             )
 
             return unwrap_payin(response_data)
 
-        def get_payins(self, status=None, limit=100):
-            limit = max(1, min(int(limit), 100))
-            params = {'limit': limit}
+        def get_payin_session(
+            self,
+            identifier,
+            sync=False,
+            timeout=(5, 10),
+        ):
+            if not self.provider.weselaja_api_key:
+                raise ValidationError(_(
+                    'Configure the WeselAja API Key first.'
+                ))
 
-            if status:
-                params['status'] = str(status).strip().upper()
+            if not self.provider.weselaja_secret_key:
+                raise ValidationError(_(
+                    'Configure the WeselAja API Secret Key first.'
+                ))
 
-            request_uri = PAYINS_URI + '?' + urlencode(params)
+            identifier = str(identifier or '').strip()
 
-            return self._request(
+            if not identifier:
+                raise ValidationError(_(
+                    'A WeselAja session ID or reference is required.'
+                ))
+
+            uri = PAYIN_SESSION_PREFIX + quote(identifier, safe='')
+
+            params = {'sync': 'true'} if sync else None
+            timestamp = make_timestamp()
+
+            signature = build_request_signature(
+                self.provider.weselaja_secret_key,
                 'GET',
-                request_uri,
-                signature_uri=PAYINS_URI,
+                uri,
+                timestamp,
+                '',
             )
+
+            headers = {
+                'Accept': 'application/json',
+                'X-API-Key': self.provider.weselaja_api_key,
+                'X-Timestamp': timestamp,
+                'X-Signature': signature,
+            }
+
+            try:
+                response = requests.get(
+                    self._base_url() + uri,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout,
+                    allow_redirects=False,
+                )
+            except requests.RequestException as error:
+                _logger.warning(
+                    'Could not connect to WeselAja Payin Session API.'
+                )
+
+                raise ValidationError(_(
+                    'Could not verify the WeselAja payment status. '
+                    'The status request can be retried.'
+                )) from error
+
+            response_data = self._decode_response(
+                response,
+                'GET /v2/payins/{id}',
+            )
+
+            return unwrap_payin(response_data)
+
+        def validate_payment_link(self, payment_link_url):
+            if not payment_link_url:
+                raise ValidationError(_(
+                    'WeselAja did not return a payment link.'
+                ))
+
+            parsed = urlsplit(str(payment_link_url))
+            api_host = urlsplit(self._base_url()).hostname
+
+            if (
+                parsed.scheme != 'https'
+                or not parsed.hostname
+                or parsed.hostname.lower() != (api_host or '').lower()
+                or parsed.username
+                or parsed.password
+                or parsed.fragment
+            ):
+                raise ValidationError(_(
+                    'WeselAja returned an invalid or unexpected payment URL.'
+                ))
+
+            return str(payment_link_url)
     """;
 
     private const string PaymentTransactionTemplate = """
-    from urllib.parse import urlencode
-
     from odoo import _, api, fields, models
     from odoo.exceptions import UserError, ValidationError
 
     from odoo.addons.payment import utils as payment_utils
     from odoo.addons.__MODULE_NAME__.lib.weselaja_api import (
         WeselAjaApi,
-        extract_payins,
+        is_valid_reference_code,
         map_payin_status,
+        normalize_customer_phone,
     )
 
 
     class PaymentTransaction(models.Model):
         _inherit = 'payment.transaction'
+
+        weselaja_reference_code = fields.Char(
+            string='WeselAja Reference Code',
+            copy=False,
+            readonly=True,
+            index=True,
+        )
 
         weselaja_payment_id = fields.Char(
             string='WeselAja Payment ID',
@@ -814,14 +888,27 @@ public sealed class OdooWeselAjaGenerator
             readonly=True,
         )
 
+        weselaja_session_id = fields.Char(
+            string='WeselAja Session ID',
+            copy=False,
+            readonly=True,
+            index=True,
+        )
+
+        weselaja_payment_link_url = fields.Char(
+            string='WeselAja Payment Link',
+            copy=False,
+            readonly=True,
+        )
+
         weselaja_payment_code = fields.Char(
-            string='Payment Code / Virtual Account',
+            string='Payment Code',
             copy=False,
             readonly=True,
         )
 
         weselaja_payment_channel = fields.Char(
-            string='WeselAja Payment Channel',
+            string='Selected Payment Channel',
             copy=False,
             readonly=True,
         )
@@ -839,6 +926,8 @@ public sealed class OdooWeselAjaGenerator
 
             if self.provider_code != 'weselaja':
                 return values
+
+            self.ensure_one()
 
             return {
                 **values,
@@ -860,101 +949,140 @@ public sealed class OdooWeselAjaGenerator
 
             if self.currency_id.name != 'IDR':
                 raise ValidationError(_(
-                    'WeselAja Virtual Account transactions must use IDR.'
+                    'WeselAja Short Link payments must use IDR.'
+                ))
+
+            if not is_valid_reference_code(self.reference):
+                raise ValidationError(_(
+                    'The Odoo transaction reference must contain only '
+                    'letters, numbers, hyphens, and underscores for '
+                    'WeselAja Short Link.'
                 ))
 
             provider = self.provider_id
-            base_url = provider.get_base_url().rstrip('/')
-            access_token = payment_utils.generate_access_token(
-                self.reference,
-                self.amount,
+
+            if not provider.weselaja_customer_reference:
+                raise ValidationError(_(
+                    'Configure the WeselAja Customer Reference first.'
+                ))
+
+            access_token = (
+                processing_values.get('access_token')
+                or payment_utils.generate_access_token(
+                    self.reference,
+                    self.amount,
+                )
             )
 
-            redirect_url = (
-                base_url
-                + '/payment/weselaja/return?'
-                + urlencode({
-                    'reference': self.reference,
-                    'access_token': access_token,
-                })
-            )
+            if not self.weselaja_payment_link_url:
+                amount = int(
+                    self.currency_id.round(self.amount)
+                )
 
-            if not self.weselaja_payment_code:
+                if amount <= 0:
+                    raise ValidationError(_(
+                        'WeselAja payment amount must be greater than zero.'
+                    ))
+
+                base_url = provider.get_base_url().rstrip('/')
+
+                callback_url = provider._get_weselaja_callback_url()
+
+                redirect_url = provider._get_weselaja_return_url(
+                    self.reference,
+                    access_token,
+                )
+
+                partner = self.partner_id
+
                 customer_name = (
                     self.partner_name
-                    or self.partner_id.name
+                    or (partner.name if partner else '')
                     or ''
                 ).strip()
 
-                if not customer_name:
-                    raise ValidationError(_(
-                        'A customer name is required for WeselAja.'
-                    ))
-
-                if not provider.weselaja_customer_reference:
-                    raise ValidationError(_(
-                        'Configure the WeselAja Customer Reference '
-                        'in the payment provider settings.'
-                    ))
+                phone = (
+                    normalize_customer_phone(partner.mobile)
+                    if partner and partner.mobile
+                    else normalize_customer_phone(partner.phone)
+                    if partner
+                    else None
+                )
 
                 payload = {
-                    'initiatedAmount': int(
-                        self.currency_id.round(self.amount)
-                    ),
+                    'amount': amount,
                     'currency': self.currency_id.name,
-                    'paymentMethod': 'VIRTUAL_ACCOUNT',
-                    'paymentChannel': provider.weselaja_payment_channel,
                     'referenceCode': self.reference,
                     'customerReference':
-                        provider.weselaja_customer_reference,
-                    'customerName': customer_name,
-                    'callbackUrl': provider._get_weselaja_callback_url(),
+                        provider.weselaja_customer_reference.strip(),
+                    'callbackUrl': callback_url,
                     'redirectUrl': redirect_url,
-                    'description': self.reference,
                 }
 
-                if self.partner_phone:
-                    payload['customerPhoneNumber'] = self.partner_phone
+                if customer_name:
+                    payload['customerName'] = customer_name
 
-                payin = WeselAjaApi(provider).create_payin(
-                    payload,
-                    payment_utils.generate_idempotency_key(
-                        self,
-                        scope='/v1/payins',
-                    ),
+                if phone:
+                    payload['customerPhoneNumber'] = phone
+
+                payin = WeselAjaApi(provider).create_short_link(payload)
+
+                payment_link_url = payin.get('paymentLinkUrl')
+
+                session_id = (
+                    payin.get('sessionId')
+                    or payin.get('id')
                 )
 
-                payment_code = (
-                    payin.get('paymentCode')
-                    or payin.get('payment_code')
-                    or payin.get('virtualAccountNumber')
-                )
-
-                if not payment_code:
+                if not session_id:
                     raise ValidationError(_(
-                        'WeselAja did not return a payment code.'
+                        'WeselAja did not return a session ID.'
                     ))
 
-                payment_id = (
-                    payin.get('id')
-                    or payin.get('paymentId')
-                    or payin.get('payinId')
+                if not payment_link_url:
+                    raise ValidationError(_(
+                        'WeselAja did not return paymentLinkUrl.'
+                    ))
+
+                payment_link_url = (
+                    WeselAjaApi(provider).validate_payment_link(
+                        payment_link_url
+                    )
                 )
 
+                returned_reference = payin.get('referenceCode')
+
+                if (
+                    returned_reference
+                    and returned_reference != self.reference
+                ):
+                    raise ValidationError(_(
+                        'The reference returned by WeselAja does not '
+                        'match the Odoo transaction.'
+                    ))
+
+                payment_id = payin.get('id') or session_id
+
                 write_values = {
-                    'weselaja_payment_id': (
-                        str(payment_id) if payment_id else False
+                    'weselaja_reference_code': self.reference,
+                    'weselaja_session_id': str(session_id),
+                    'weselaja_payment_id': str(payment_id),
+                    'weselaja_payment_link_url': payment_link_url,
+                    'weselaja_status': (
+                        payin.get('status') or 'ACTIVE'
                     ),
-                    'weselaja_payment_code': str(payment_code),
-                    'weselaja_payment_channel': (
-                        payin.get('paymentChannel')
-                        or provider.weselaja_payment_channel
-                    ),
-                    'weselaja_status': payin.get('status') or 'PENDING',
+                    'provider_reference': str(session_id),
                 }
 
-                if payment_id:
-                    write_values['provider_reference'] = str(payment_id)
+                if payin.get('paymentChannel'):
+                    write_values['weselaja_payment_channel'] = (
+                        payin['paymentChannel']
+                    )
+
+                if payin.get('paymentCode'):
+                    write_values['weselaja_payment_code'] = (
+                        str(payin['paymentCode'])
+                    )
 
                 self.write(write_values)
 
@@ -963,7 +1091,8 @@ public sealed class OdooWeselAjaGenerator
 
             return {
                 'instructions_url': (
-                    base_url + '/payment/weselaja/instructions'
+                    base_url
+                    + '/payment/weselaja/instructions'
                 ),
                 'reference': self.reference,
                 'access_token': access_token,
@@ -987,21 +1116,21 @@ public sealed class OdooWeselAjaGenerator
                 or notification_data.get('merchantReference')
             )
 
+            session_id = notification_data.get('sessionId')
+
             payment_id = (
                 notification_data.get('id')
                 or notification_data.get('paymentId')
                 or notification_data.get('payinId')
             )
 
-            provider_id = notification_data.get('_weselaja_provider_id')
+            provider_id = notification_data.get(
+                '_weselaja_provider_id'
+            )
 
-            if not reference and not payment_id:
-                raise ValidationError(_(
-                    'WeselAja notification is missing its transaction '
-                    'reference and payment ID.'
-                ))
-
-            domain = [('provider_code', '=', 'weselaja')]
+            domain = [
+                ('provider_code', '=', 'weselaja'),
+            ]
 
             if provider_id:
                 try:
@@ -1013,47 +1142,57 @@ public sealed class OdooWeselAjaGenerator
 
                 domain.append(('provider_id', '=', provider_id))
 
-            tx = self.browse()
+            transaction = self.browse()
 
             if reference:
-                tx = self.search([
+                transaction = self.search([
                     *domain,
+                    '|',
+                    ('weselaja_reference_code', '=', reference),
                     ('reference', '=', reference),
                 ], limit=1)
 
-            if not tx and payment_id:
-                tx = self.search([
+            if not transaction and session_id:
+                transaction = self.search([
+                    *domain,
+                    ('weselaja_session_id', '=', str(session_id)),
+                ], limit=1)
+
+            if not transaction and payment_id:
+                transaction = self.search([
                     *domain,
                     '|',
                     ('weselaja_payment_id', '=', str(payment_id)),
                     ('provider_reference', '=', str(payment_id)),
                 ], limit=1)
 
-            if not tx:
+            if not transaction:
                 raise ValidationError(_(
                     'No WeselAja transaction matches the supplied '
-                    'reference or payment ID.'
+                    'reference or session ID.'
                 ))
 
             if (
-                tx.weselaja_payment_id
-                and payment_id
-                and str(tx.weselaja_payment_id) != str(payment_id)
+                reference
+                and transaction.reference != reference
+                and transaction.weselaja_reference_code != reference
             ):
                 raise ValidationError(_(
-                    'WeselAja payment ID does not match the transaction.'
+                    'WeselAja reference does not match the transaction.'
                 ))
 
             if (
-                tx.provider_reference
-                and payment_id
-                and str(tx.provider_reference) != str(payment_id)
+                session_id
+                and transaction.weselaja_session_id
+                and str(session_id) != str(
+                    transaction.weselaja_session_id
+                )
             ):
                 raise ValidationError(_(
-                    'WeselAja provider reference does not match the transaction.'
+                    'WeselAja session ID does not match the transaction.'
                 ))
 
-            return tx
+            return transaction
 
         def _process_notification_data(self, notification_data):
             super()._process_notification_data(notification_data)
@@ -1063,73 +1202,34 @@ public sealed class OdooWeselAjaGenerator
 
             self.ensure_one()
 
+            if notification_data.get('_weselaja_verified') is not True:
+                raise ValidationError(_(
+                    'WeselAja status must be verified using the '
+                    'authenticated Payin Session API.'
+                ))
+
             reference = (
                 notification_data.get('referenceCode')
                 or notification_data.get('reference')
-                or notification_data.get('merchantReference')
             )
 
-            if reference and reference != self.reference:
+            if reference != self.reference:
                 raise ValidationError(_(
-                    'WeselAja transaction reference does not match.'
+                    'Verified WeselAja reference does not match '
+                    'the Odoo transaction.'
                 ))
 
-            payment_id = (
-                notification_data.get('id')
-                or notification_data.get('paymentId')
-                or notification_data.get('payinId')
-            )
+            session_id = notification_data.get('sessionId')
 
             if (
-                self.weselaja_payment_id
-                and payment_id
-                and str(self.weselaja_payment_id) != str(payment_id)
+                self.weselaja_session_id
+                and session_id
+                and str(session_id) != str(self.weselaja_session_id)
             ):
                 raise ValidationError(_(
-                    'WeselAja payment ID does not match the transaction.'
+                    'Verified WeselAja session ID does not match '
+                    'the Odoo transaction.'
                 ))
-
-            amount_data = (
-                notification_data.get('initiatedAmount')
-                or notification_data.get('paymentAmount')
-                or notification_data.get('amount')
-            )
-            currency_code = notification_data.get('currency')
-
-            if isinstance(amount_data, dict):
-                currency_code = (
-                    amount_data.get('currency') or currency_code
-                )
-                amount_data = (
-                    amount_data.get('value')
-                    if amount_data.get('value') is not None
-                    else amount_data.get('amount')
-                )
-
-            if amount_data is not None or currency_code:
-                if amount_data is None or not currency_code:
-                    raise ValidationError(_(
-                        'WeselAja notification contains incomplete amount data.'
-                    ))
-
-                try:
-                    received_amount = float(amount_data)
-                except (TypeError, ValueError) as error:
-                    raise ValidationError(_(
-                        'WeselAja notification contains an invalid amount.'
-                    )) from error
-
-                if (
-                    currency_code != self.currency_id.name
-                    or self.currency_id.compare_amounts(
-                        received_amount,
-                        self.amount,
-                    ) != 0
-                ):
-                    raise ValidationError(_(
-                        'WeselAja notification amount or currency does not '
-                        'match the transaction.'
-                    ))
 
             status = str(
                 notification_data.get('status') or ''
@@ -1137,7 +1237,7 @@ public sealed class OdooWeselAjaGenerator
 
             if not status:
                 raise ValidationError(_(
-                    'WeselAja notification is missing its payment status.'
+                    'WeselAja Payin Session response is missing status.'
                 ))
 
             transaction_state = map_payin_status(status)
@@ -1151,43 +1251,52 @@ public sealed class OdooWeselAjaGenerator
             if self.state in ('done', 'cancel'):
                 return
 
-            values = {}
+            values = {
+                'weselaja_status': status,
+            }
+
+            if session_id:
+                values['weselaja_session_id'] = str(session_id)
+
+            payment_id = notification_data.get('id')
 
             if payment_id:
-                values['provider_reference'] = str(payment_id)
                 values['weselaja_payment_id'] = str(payment_id)
 
-            payment_code = (
-                notification_data.get('paymentCode')
-                or notification_data.get('payment_code')
-                or notification_data.get('virtualAccountNumber')
-            )
+            channel = notification_data.get('paymentChannel')
+
+            if channel:
+                values['weselaja_payment_channel'] = str(channel)
+
+            payment_code = notification_data.get('paymentCode')
 
             if payment_code:
                 values['weselaja_payment_code'] = str(payment_code)
 
-            channel = notification_data.get('paymentChannel')
-            if channel:
-                values['weselaja_payment_channel'] = channel
-
-            values['weselaja_status'] = status
             self.write(values)
 
             if transaction_state == 'done':
                 self._set_done()
+
             elif transaction_state == 'error':
                 if self.state != 'error':
                     self._set_error(_(
                         'WeselAja reports that the payment failed.'
                     ))
+
             elif transaction_state == 'cancel':
                 if self.state in ('draft', 'pending', 'authorized'):
                     self._set_canceled()
+
             elif transaction_state == 'pending':
                 if self.state == 'draft':
                     self._set_pending()
 
-        def _refresh_weselaja_status(self):
+        def _refresh_weselaja_status(
+            self,
+            sync=True,
+            callback_request=False,
+        ):
             self.ensure_one()
             payment_utils.check_rights_on_recordset(self)
 
@@ -1196,50 +1305,67 @@ public sealed class OdooWeselAjaGenerator
                     'This transaction does not use WeselAja.'
                 ))
 
-            response_data = WeselAjaApi(
-                self.provider_id
-            ).get_payins(limit=100)
-
-            matching_payin = next(
-                (
-                    item
-                    for item in extract_payins(response_data)
-                    if (
-                        item.get('referenceCode') == self.reference
-                        or item.get('reference') == self.reference
-                        or (
-                            self.weselaja_payment_id
-                            and str(
-                                item.get('id')
-                                or item.get('paymentId')
-                                or item.get('payinId')
-                                or ''
-                            ) == str(self.weselaja_payment_id)
-                        )
-                    )
-                ),
-                None,
+            identifier = (
+                self.weselaja_session_id
+                or self.weselaja_payment_id
+                or self.reference
             )
 
-            if not matching_payin:
-                raise UserError(_(
-                    'The transaction was not found in the latest '
-                    '100 WeselAja pay-in records.'
+            timeout = (1.5, 2.5) if callback_request else (5, 10)
+
+            verified_payin = WeselAjaApi(
+                self.provider_id
+            ).get_payin_session(
+                identifier,
+                sync=sync,
+                timeout=timeout,
+            )
+
+            verified_reference = (
+                verified_payin.get('referenceCode')
+                or verified_payin.get('reference')
+            )
+
+            if verified_reference != self.reference:
+                raise ValidationError(_(
+                    'WeselAja Payin Session reference does not match '
+                    'the Odoo transaction.'
                 ))
 
-            notification_data = dict(matching_payin)
-            notification_data['_weselaja_provider_id'] = self.provider_id.id
+            returned_session_id = verified_payin.get('sessionId')
+
+            if (
+                self.weselaja_session_id
+                and returned_session_id
+                and str(returned_session_id)
+                != str(self.weselaja_session_id)
+            ):
+                raise ValidationError(_(
+                    'WeselAja Payin Session ID does not match '
+                    'the Odoo transaction.'
+                ))
+
+            if not verified_payin.get('status'):
+                raise ValidationError(_(
+                    'WeselAja Payin Session response has no status.'
+                ))
+
+            notification_data = dict(verified_payin)
+            notification_data['_weselaja_verified'] = True
+            notification_data['_weselaja_provider_id'] = (
+                self.provider_id.id
+            )
 
             self.env['payment.transaction'].sudo()._handle_notification_data(
                 'weselaja',
                 notification_data,
             )
 
-            return matching_payin
+            return verified_payin
 
         def action_weselaja_refresh_status(self):
             self.ensure_one()
-            self._refresh_weselaja_status()
+            self._refresh_weselaja_status(sync=True)
 
             return {
                 'type': 'ir.actions.client',
@@ -1248,7 +1374,6 @@ public sealed class OdooWeselAjaGenerator
     """;
 
     private const string ControllerTemplate = """
-    import hmac
     import json
     import logging
     from urllib.parse import urlencode
@@ -1259,23 +1384,13 @@ public sealed class OdooWeselAjaGenerator
     from odoo.addons.payment import utils as payment_utils
 
     from odoo.addons.__MODULE_NAME__.lib.weselaja_api import (
-        build_webhook_signature,
-        is_webhook_timestamp_valid,
+        WeselAjaApi,
     )
 
 
     _logger = logging.getLogger(__name__)
 
     CALLBACK_PATH = '/payment/weselaja/webhook'
-
-    BANK_NAMES = {
-        'BRI.VA': 'BRI',
-        'MDR.VA': 'Mandiri',
-        'BNI.VA': 'BNI',
-        'PTB.VA': 'Permata',
-        'CIMB.VA': 'CIMB',
-        'BCA.VA': 'BCA',
-    }
 
 
     def _make_response(body, status):
@@ -1297,28 +1412,20 @@ public sealed class OdooWeselAjaGenerator
         )
 
 
-    def _render_instructions(
-        tx,
-        access_token,
-        status_refresh_error=False,
-    ):
+    def _render_status(tx, access_token, refresh_error=False):
         status_query = urlencode({
             'reference': tx.reference,
             'access_token': access_token,
         })
 
         return request.render(
-            '__MODULE_NAME__.payment_instructions',
+            '__MODULE_NAME__.payment_status',
             {
                 'tx': tx,
-                'bank_name': BANK_NAMES.get(
-                    tx.weselaja_payment_channel,
-                    tx.weselaja_payment_channel or '',
-                ),
                 'status_url': (
                     '/payment/weselaja/status?' + status_query
                 ),
-                'status_refresh_error': status_refresh_error,
+                'refresh_error': refresh_error,
             },
         )
 
@@ -1336,63 +1443,8 @@ public sealed class OdooWeselAjaGenerator
         def weselaja_webhook(self, **kwargs):
             raw_body = request.httprequest.get_data(cache=True)
 
-            providers = request.env['payment.provider'].sudo().search([
-                ('code', '=', 'weselaja'),
-                ('weselaja_webhook_secret', '!=', False),
-            ])
-
-            if not providers:
-                _logger.error(
-                    'No WeselAja provider has a webhook secret configured.'
-                )
-                return _make_response(
-                    'Webhook secret is not configured',
-                    500,
-                )
-
-            timestamp = request.httprequest.headers.get(
-                'x-middleware-timestamp',
-                '',
-            )
-            signature = request.httprequest.headers.get(
-                'x-middleware-signature',
-                '',
-            )
-
-            if not timestamp or not signature:
-                return _make_response('Missing signature headers', 401)
-
-            if not is_webhook_timestamp_valid(timestamp):
-                return _make_response('Invalid or expired timestamp', 401)
-
-            signature_uri = CALLBACK_PATH
-            query_string = request.httprequest.query_string
-            if query_string:
-                signature_uri += '?' + query_string.decode('ascii')
-
-            provider = request.env['payment.provider']
-
-            for candidate in providers:
-                expected_signature = build_webhook_signature(
-                    candidate.weselaja_webhook_secret,
-                    'POST',
-                    signature_uri,
-                    raw_body,
-                    timestamp,
-                )
-
-                if hmac.compare_digest(
-                    expected_signature,
-                    signature.strip(),
-                ):
-                    provider = candidate
-                    break
-
-            if not provider:
-                _logger.warning(
-                    'WeselAja webhook signature validation failed.'
-                )
-                return _make_response('Invalid signature', 401)
+            if len(raw_body) > 256 * 1024:
+                return _make_response('Payload too large', 413)
 
             try:
                 payload = json.loads(raw_body.decode('utf-8'))
@@ -1405,15 +1457,7 @@ public sealed class OdooWeselAjaGenerator
             data = payload.get('data', payload)
 
             if not isinstance(data, dict):
-                return _make_response('Invalid transaction data', 400)
-
-            if isinstance(data.get('payin'), dict):
-                data = data['payin']
-            elif isinstance(data.get('payment'), dict):
-                data = data['payment']
-
-            data = dict(data)
-            data['_weselaja_provider_id'] = provider.id
+                return _make_response('Invalid callback data', 400)
 
             reference = (
                 data.get('referenceCode')
@@ -1421,25 +1465,98 @@ public sealed class OdooWeselAjaGenerator
                 or data.get('merchantReference')
             )
 
-            try:
-                request.env['payment.transaction'].sudo()._handle_notification_data(
-                    'weselaja',
-                    data,
-                )
-            except (ValidationError, UserError):
-                _logger.warning(
-                    'WeselAja callback failed transaction validation for %s.',
-                    reference or '(missing reference)',
-                )
+            session_id = (
+                data.get('sessionId')
+                or data.get('id')
+            )
+
+            if not reference and not session_id:
                 return _make_response(
-                    'Invalid transaction notification',
+                    'Missing referenceCode and sessionId',
                     400,
                 )
+
+            domain = [
+                ('provider_code', '=', 'weselaja'),
+            ]
+
+            transaction = request.env[
+                'payment.transaction'
+            ].sudo().browse()
+
+            if reference:
+                transaction = request.env[
+                    'payment.transaction'
+                ].sudo().search([
+                    *domain,
+                    '|',
+                    ('weselaja_reference_code', '=', str(reference)),
+                    ('reference', '=', str(reference)),
+                ], limit=1)
+
+            if not transaction and session_id:
+                transaction = request.env[
+                    'payment.transaction'
+                ].sudo().search([
+                    *domain,
+                    ('weselaja_session_id', '=', str(session_id)),
+                ], limit=1)
+
+            if not transaction:
+                _logger.warning(
+                    'WeselAja Short Link callback did not match '
+                    'an Odoo transaction.'
+                )
+
+                return _make_response('OK', 200)
+
+            if (
+                reference
+                and transaction.reference != str(reference)
+                and transaction.weselaja_reference_code != str(reference)
+            ):
+                _logger.warning(
+                    'WeselAja callback reference mismatch.'
+                )
+                return _make_response('OK', 200)
+
+            if (
+                session_id
+                and transaction.weselaja_session_id
+                and str(session_id)
+                != str(transaction.weselaja_session_id)
+            ):
+                _logger.warning(
+                    'WeselAja callback session ID mismatch.'
+                )
+                return _make_response('OK', 200)
+
+            try:
+                transaction._refresh_weselaja_status(
+                    sync=True,
+                    callback_request=True,
+                )
+
+            except (UserError, ValidationError):
+                _logger.warning(
+                    'Could not verify WeselAja callback using '
+                    'Payin Session API for transaction %s.',
+                    transaction.reference,
+                    exc_info=True,
+                )
+
+                return _make_response(
+                    'Payment status verification failed',
+                    500,
+                )
+
             except Exception:
                 _logger.exception(
-                    'Unexpected error processing WeselAja callback for %s.',
-                    reference or '(missing reference)',
+                    'Unexpected error processing WeselAja callback '
+                    'for transaction %s.',
+                    transaction.reference,
                 )
+
                 return _make_response('Processing error', 500)
 
             return _make_response('OK', 200)
@@ -1469,7 +1586,23 @@ public sealed class OdooWeselAjaGenerator
             if not tx or not _has_valid_access_token(tx, access_token):
                 return request.not_found()
 
-            return _render_instructions(tx, access_token)
+            if not tx.weselaja_payment_link_url:
+                return request.not_found()
+
+            try:
+                payment_link_url = WeselAjaApi(
+                    tx.provider_id
+                ).validate_payment_link(
+                    tx.weselaja_payment_link_url
+                )
+            except ValidationError:
+                _logger.warning(
+                    'Invalid WeselAja payment link for transaction %s.',
+                    tx.reference,
+                )
+                return request.not_found()
+
+            return request.redirect(payment_link_url, code=303)
 
         @http.route(
             '/payment/weselaja/status',
@@ -1496,21 +1629,22 @@ public sealed class OdooWeselAjaGenerator
             if not tx or not _has_valid_access_token(tx, access_token):
                 return request.not_found()
 
-            refresh_failed = False
+            refresh_error = False
 
             try:
-                tx._refresh_weselaja_status()
+                tx._refresh_weselaja_status(sync=True)
             except (UserError, ValidationError):
-                refresh_failed = True
+                refresh_error = True
                 _logger.warning(
                     'Could not refresh WeselAja status for %s.',
                     tx.reference,
+                    exc_info=True,
                 )
 
-            return _render_instructions(
+            return _render_status(
                 tx,
                 access_token,
-                status_refresh_error=refresh_failed,
+                refresh_error=refresh_error,
             )
 
         @http.route(
@@ -1544,7 +1678,8 @@ public sealed class OdooWeselAjaGenerator
             })
 
             return request.redirect(
-                '/payment/weselaja/status?' + status_query
+                '/payment/weselaja/status?' + status_query,
+                code=303,
             )
     """;
 
@@ -1571,17 +1706,9 @@ public sealed class OdooWeselAjaGenerator
                             name="weselaja_customer_reference"
                             required="code == 'weselaja' and state != 'disabled'"
                         />
-                        <field
-                            name="weselaja_webhook_secret"
-                            password="True"
-                            required="code == 'weselaja' and state != 'disabled'"
-                        />
-                        <field
-                            name="weselaja_payment_channel"
-                            required="code == 'weselaja' and state != 'disabled'"
-                        />
                     </group>
                 </group>
+
                 <group name="provider_config" position="inside">
                     <group
                         string="WeselAja API URLs"
@@ -1596,6 +1723,7 @@ public sealed class OdooWeselAjaGenerator
                             required="code == 'weselaja' and state != 'disabled'"
                         />
                         <field name="weselaja_callback_url"/>
+                        <field name="weselaja_redirect_url"/>
                     </group>
                 </group>
             </field>
@@ -1619,23 +1747,20 @@ public sealed class OdooWeselAjaGenerator
                     t-att-value="access_token"
                 />
                 <button type="submit" class="btn btn-primary">
-                    Continue to payment instructions
+                    Continue to WeselAja Checkout
                 </button>
             </form>
         </template>
 
-        <template id="payment_instructions">
+        <template id="payment_status">
             <t t-call="portal.frontend_layout">
-                <t t-set="page_title">WeselAja Payment Instructions</t>
+                <t t-set="page_title">WeselAja Payment Status</t>
+
                 <div id="wrap" class="oe_structure">
                     <div class="container my-5">
                         <div class="row justify-content-center">
                             <div class="col-12 col-lg-8">
-                                <h1>Payment Instructions</h1>
-                                <p>
-                                    Complete the bank transfer using the
-                                    Virtual Account details below.
-                                </p>
+                                <h1>WeselAja Payment Status</h1>
 
                                 <div class="card my-4">
                                     <div class="card-body">
@@ -1657,52 +1782,90 @@ public sealed class OdooWeselAjaGenerator
                                         </div>
 
                                         <div class="mb-3">
-                                            <strong>Bank</strong>
-                                            <div>
-                                                <span t-out="bank_name"/>
-                                            </div>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <strong>Payment Code / Virtual Account</strong>
-                                            <div class="fs-4 fw-bold">
-                                                <code
-                                                    t-out="tx.weselaja_payment_code or ''"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div class="mb-3">
                                             <strong>Payment Status</strong>
                                             <div>
                                                 <span t-out="tx.weselaja_status or 'PENDING'"/>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <strong>Odoo Transaction State</strong>
+                                            <div>
+                                                <span t-out="tx.state"/>
+                                            </div>
+                                        </div>
+
+                                        <div
+                                            t-if="tx.weselaja_payment_channel"
+                                            class="mb-3"
+                                        >
+                                            <strong>Selected Payment Channel</strong>
+                                            <div>
+                                                <span t-out="tx.weselaja_payment_channel"/>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div
-                                    t-if="status_refresh_error"
+                                    t-if="refresh_error"
                                     class="alert alert-warning"
                                     role="alert"
                                 >
-                                    The current status could not be refreshed.
-                                    Please try again later.
+                                    The payment status could not be refreshed
+                                    from WeselAja. Please try again.
                                 </div>
 
-                                <div class="alert alert-info" role="alert">
-                                    Your payment status will be updated after
-                                    WeselAja confirms the transaction.
-                                    Returning to this page does not itself
-                                    confirm a successful payment.
-                                </div>
-
-                                <a
-                                    t-att-href="status_url"
-                                    class="btn btn-primary"
+                                <div
+                                    t-if="tx.state == 'done'"
+                                    class="alert alert-success"
+                                    role="alert"
                                 >
-                                    Check Payment Status
-                                </a>
+                                    Payment completed successfully.
+                                </div>
+
+                                <div
+                                    t-elif="tx.state == 'cancel'"
+                                    class="alert alert-warning"
+                                    role="alert"
+                                >
+                                    This payment has expired or been cancelled.
+                                </div>
+
+                                <div
+                                    t-elif="tx.state == 'error'"
+                                    class="alert alert-danger"
+                                    role="alert"
+                                >
+                                    The payment failed.
+                                </div>
+
+                                <div
+                                    t-else=""
+                                    class="alert alert-info"
+                                    role="alert"
+                                >
+                                    Waiting for payment confirmation from WeselAja.
+                                </div>
+
+                                <div class="d-flex flex-wrap gap-2">
+                                    <a
+                                        t-att-href="status_url"
+                                        class="btn btn-primary"
+                                    >
+                                        Refresh Payment Status
+                                    </a>
+
+                                    <a
+                                        t-if="tx.weselaja_payment_link_url and tx.state not in ('done', 'cancel', 'error')"
+                                        t-att-href="tx.weselaja_payment_link_url"
+                                        class="btn btn-outline-primary"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        Open Checkout Again
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1730,12 +1893,16 @@ public sealed class OdooWeselAjaGenerator
                         invisible="provider_code != 'weselaja'"
                     />
                 </xpath>
+
                 <xpath expr="//sheet" position="inside">
                     <group
                         string="WeselAja Payment Details"
                         invisible="provider_code != 'weselaja'"
                     >
+                        <field name="weselaja_reference_code"/>
                         <field name="weselaja_payment_id"/>
+                        <field name="weselaja_session_id"/>
+                        <field name="weselaja_payment_link_url"/>
                         <field name="weselaja_payment_code"/>
                         <field name="weselaja_payment_channel"/>
                         <field name="weselaja_status"/>
@@ -1756,9 +1923,9 @@ public sealed class OdooWeselAjaGenerator
             <field name="redirect_form_view_id" ref="redirect_form"/>
         </record>
 
-        <record id="payment_method_weselaja_va" model="payment.method">
-            <field name="name">WeselAja Virtual Account</field>
-            <field name="code">weselaja_va</field>
+        <record id="payment_method_weselaja_checkout" model="payment.method">
+            <field name="name">WeselAja Hosted Checkout</field>
+            <field name="code">weselaja_checkout</field>
             <field name="sequence">350</field>
             <field name="active">True</field>
             <field name="image" type="base64" file="payment/static/img/bank.png"/>
@@ -1782,13 +1949,13 @@ public sealed class OdooWeselAjaGenerator
 
     private const string ExamplePayloadTemplate = """
     {
-      "initiatedAmount": 10000,
+      "apiKey": "YOUR_MERCHANT_API_KEY",
+      "amount": 10000,
       "currency": "IDR",
-      "paymentMethod": "VIRTUAL_ACCOUNT",
-      "paymentChannel": "BRI.VA",
       "referenceCode": "ODOO-EXAMPLE-001",
       "customerReference": "CUSTOMER-001",
       "customerName": "Example Customer",
+      "customerPhoneNumber": "081234567890",
       "callbackUrl": "https://your-public-domain.example/payment/weselaja/webhook",
       "redirectUrl": "https://your-public-domain.example/payment/weselaja/return"
     }
@@ -1799,16 +1966,13 @@ public sealed class OdooWeselAjaGenerator
     """;
 
     private const string TestsTemplate = """
-    from datetime import datetime, timezone
-
     from odoo.tests import TransactionCase, tagged
 
     from odoo.addons.__MODULE_NAME__.lib.weselaja_api import (
         build_request_signature,
-        build_webhook_signature,
-        extract_payins,
-        is_webhook_timestamp_valid,
+        is_valid_reference_code,
         map_payin_status,
+        normalize_customer_phone,
         unwrap_payin,
     )
 
@@ -1819,147 +1983,141 @@ public sealed class OdooWeselAjaGenerator
         def test_request_signature_is_deterministic(self):
             first = build_request_signature(
                 'test-secret',
-                'POST',
-                '/v1/payins',
+                'GET',
+                '/v2/payins/session-001',
                 '2026-10-14T00:00:00.000Z',
-                '{"x":1}',
+                '',
+            )
+
+            second = build_request_signature(
+                'test-secret',
+                'GET',
+                '/v2/payins/session-001',
+                '2026-10-14T00:00:00.000Z',
+                '',
+            )
+
+            changed_uri = build_request_signature(
+                'test-secret',
+                'GET',
+                '/v2/payins/session-002',
+                '2026-10-14T00:00:00.000Z',
+                '',
+            )
+
+            self.assertEqual(first, second)
+            self.assertNotEqual(first, changed_uri)
+
+        def test_request_signature_changes_with_body(self):
+            first = build_request_signature(
+                'test-secret',
+                'POST',
+                '/v2/payins',
+                '2026-10-14T00:00:00.000Z',
+                '{"amount":10000}',
             )
 
             second = build_request_signature(
                 'test-secret',
                 'POST',
-                '/v1/payins',
+                '/v2/payins',
                 '2026-10-14T00:00:00.000Z',
-                '{"x":1}',
+                '{"amount":20000}',
             )
 
-            changed_body = build_request_signature(
-                'test-secret',
-                'POST',
-                '/v1/payins',
-                '2026-10-14T00:00:00.000Z',
-                '{"x":2}',
-            )
+            self.assertNotEqual(first, second)
 
-            self.assertEqual(first, second)
-            self.assertNotEqual(first, changed_body)
+        def test_reference_code_validation(self):
+            self.assertTrue(is_valid_reference_code('S00011'))
+            self.assertTrue(is_valid_reference_code('ORDER-2026_001'))
+            self.assertFalse(is_valid_reference_code('ORDER 001'))
+            self.assertFalse(is_valid_reference_code('ORDER/001'))
+            self.assertFalse(is_valid_reference_code(''))
 
-        def test_webhook_signature_uses_exact_raw_body(self):
-            raw_body = b'{"status":"PAID"}'
-
-            signature = build_webhook_signature(
-                'test-webhook-secret',
-                'POST',
-                '/payment/weselaja/webhook',
-                raw_body,
-                '2026-10-14T00:00:00.000Z',
+        def test_phone_normalization(self):
+            self.assertEqual(
+                normalize_customer_phone('0812-3456-7890'),
+                '081234567890',
             )
 
             self.assertEqual(
-                signature,
-                build_webhook_signature(
-                    'test-webhook-secret',
-                    'POST',
-                    '/payment/weselaja/webhook',
-                    raw_body,
-                    '2026-10-14T00:00:00.000Z',
-                ),
+                normalize_customer_phone('+62 812-3456-7890'),
+                '6281234567890',
             )
 
-            self.assertNotEqual(
-                signature,
-                build_webhook_signature(
-                    'test-webhook-secret',
-                    'POST',
-                    '/payment/weselaja/webhook',
-                    b'{"status": "PAID"}',
-                    '2026-10-14T00:00:00.000Z',
-                ),
+            self.assertIsNone(
+                normalize_customer_phone('+1 555 123456'),
             )
 
-        def test_webhook_timestamp_window(self):
-            now = datetime(
-                2026, 10, 14, 0, 0,
-                tzinfo=timezone.utc,
+            self.assertIsNone(
+                normalize_customer_phone(None),
             )
 
-            self.assertTrue(is_webhook_timestamp_valid(
-                '2026-10-14T00:04:59Z',
-                now,
-            ))
-
-            self.assertFalse(is_webhook_timestamp_valid(
-                '2026-10-14T00:05:01Z',
-                now,
-            ))
-
-            self.assertFalse(is_webhook_timestamp_valid(
-                'not-a-timestamp',
-                now,
-            ))
-
-        def test_extract_payins_from_response(self):
-            response = {
-                'data': {
-                    'items': [
-                        {'referenceCode': 'ODOO-001'},
-                        {'referenceCode': 'ODOO-002'},
-                    ],
-                },
-            }
-
-            payins = extract_payins(response)
-
-            self.assertEqual(len(payins), 2)
-            self.assertEqual(
-                payins[0]['referenceCode'],
-                'ODOO-001',
-            )
+        def test_payin_status_mapping(self):
+            self.assertEqual(map_payin_status('SUCCESS'), 'done')
+            self.assertEqual(map_payin_status('COMPLETED'), 'done')
+            self.assertEqual(map_payin_status('PAID'), 'done')
+            self.assertEqual(map_payin_status('PENDING'), 'pending')
+            self.assertEqual(map_payin_status('ACTIVE'), 'pending')
+            self.assertEqual(map_payin_status('FAILED'), 'error')
+            self.assertEqual(map_payin_status('EXPIRED'), 'cancel')
+            self.assertIsNone(map_payin_status('UNKNOWN'))
 
         def test_unwrap_payin(self):
             result = unwrap_payin({
                 'data': {
+                    'id': 'sl-001',
+                    'sessionId': 'sl-001',
+                    'referenceCode': 'ODOO-001',
+                },
+            })
+
+            self.assertEqual(result['id'], 'sl-001')
+            self.assertEqual(result['sessionId'], 'sl-001')
+
+        def test_unwrap_nested_payin(self):
+            result = unwrap_payin({
+                'data': {
                     'payin': {
-                        'id': 'PAYIN-001',
-                        'status': 'PENDING',
+                        'id': 'payin-001',
+                        'status': 'SUCCESS',
                     },
                 },
             })
 
-            self.assertEqual(result['id'], 'PAYIN-001')
-            self.assertEqual(result['status'], 'PENDING')
+            self.assertEqual(result['id'], 'payin-001')
+            self.assertEqual(result['status'], 'SUCCESS')
 
-        def test_extract_payins_rejects_invalid_response(self):
-            self.assertEqual(extract_payins(None), [])
-            self.assertEqual(extract_payins('invalid'), [])
-
-        def test_payin_status_mapping(self):
-            self.assertEqual(map_payin_status('PAID'), 'done')
-            self.assertEqual(map_payin_status('processing'), 'pending')
-            self.assertEqual(map_payin_status('failed'), 'error')
-            self.assertEqual(map_payin_status('expired'), 'cancel')
-            self.assertIsNone(map_payin_status('UNKNOWN'))
-            self.assertIsNone(map_payin_status(None))
     """;
 
     private const string ReadmeTemplate = """
-    # WeselAja Odoo 18 Payment Provider
+    # WeselAja Odoo 18 Hosted Checkout
 
     Generated module: `__MODULE_NAME__`
 
     Target Odoo version: `__ODOO_VERSION__`
 
-    ## Features
+    Generator version: `odoo-weselaja-v2-shortlink`
 
-    - Provider configuration for API Key, Secret Key, Customer Reference,
-      webhook secret, sandbox/production URLs, and bank channel.
-    - Virtual Account payment method in IDR.
-    - Pay-in creation through `POST /v1/payins`.
-    - HMAC request signatures and a transaction idempotency key.
-    - Customer-facing payment instructions page.
-    - Browser return route that does not independently confirm payment.
-    - Webhook signature verification over the raw body and timestamp check.
-    - Customer and administrator status refresh.
+    ## Integration design
+
+    This module creates payment links using the V1 Short Link API.
+
+    The customer chooses the payment channel on the WeselAja hosted checkout
+    page. Odoo does not send a `paymentChannel` parameter when creating
+    a V1 Short Link.
+
+    The module uses the V2 Payin Session API only to verify transaction status.
+    The V2 session request is signed with the merchant Secret Key.
+
+    ## Requirements
+
+    - Odoo 18.0
+    - Python requests library
+    - WeselAja merchant API Key
+    - WeselAja merchant Secret Key
+    - Merchant Customer Reference
+    - A publicly reachable HTTPS Odoo base URL
 
     ## Installation
 
@@ -1967,42 +2125,172 @@ public sealed class OdooWeselAjaGenerator
     2. Ensure Odoo's Python environment can import `requests`.
     3. Restart the Odoo service.
     4. Update the Apps list.
-    5. Install the WeselAja Payment Provider module.
+    5. Install WeselAja Hosted Checkout.
     6. Open Payment Providers and select WeselAja.
-    7. Configure credentials, customer reference, webhook secret, and bank.
-    8. Test using sandbox credentials before enabling production payments.
+    7. Configure credentials and the Customer Reference.
+    8. Configure the sandbox URL and test payments before production use.
 
-    ## Supported Virtual Account channels
+    ## Provider configuration
 
-    - BRI.VA
-    - MDR.VA (Mandiri)
-    - BNI.VA
-    - PTB.VA (Permata)
-    - CIMB.VA
-    - BCA.VA
+    - API Key: Merchant API Key.
+    - API Secret Key: Merchant Secret Key. Used for signed V2 status requests.
+    - Customer Reference: Merchant customer identifier.
+    - Sandbox API Base URL: `https://sandbox.checkout.weselaja.id`.
+    - Production API Base URL: `https://checkout.weselaja.id`.
+    - Webhook URL Override: Optional public HTTPS callback URL.
+    - Return URL Override: Optional HTTPS return URL.
 
-    ## Webhook endpoint
+    For auto-settlement merchants with more than one settlement account
+    and no default account, the Customer Reference must start with the exact
+    case-sensitive `subAccount` code, as described in the WeselAja Short Link
+    documentation.
 
-    `https://your-public-domain/payment/weselaja/webhook`
+    This V1 Short Link flow does not send a `settlements` array.
 
-    The callback implementation reads `x-middleware-timestamp` and
-    `x-middleware-signature`, following the existing WeselAja generator
-    convention. Confirm these headers and the signature payload against the
-    callback contract configured for your WeselAja environment.
+    ## Create a payment
 
-    ## API signing
+    The module creates a checkout link with:
 
-    The request signature uses the HTTP method, canonical endpoint path,
-    timestamp, and compact JSON body. Confirm this signing format and the
-    GET pay-in listing response schema against the WeselAja sandbox.
+    ```http
+    GET /v1/short-link
+    ```
 
-    ## Pay-in status
+    The API Key is passed using the `apiKey` query parameter.
 
-    The status refresh implementation checks up to 100 records returned by
-    the pay-in listing API and matches the Odoo transaction reference or
-    payment ID. Pagination and the API response envelope must be confirmed
-    against the actual provider API.
+    The request parameters include:
 
-    Never enable production payments before completing sandbox testing.
+    - `amount`
+    - `currency`
+    - `referenceCode`
+    - `customerReference`
+    - `customerName`
+    - `customerPhoneNumber` when valid
+    - `callbackUrl`
+    - `redirectUrl`
+
+    The module does not send:
+
+    - `paymentChannel`
+    - `paymentMethod`
+    - `settlements`
+    - `X-Idempotency-Key`
+
+    The Short Link response must contain `sessionId` and `paymentLinkUrl`.
+    Odoo stores those values in `payment.transaction`.
+
+    ## Authentication and signatures
+
+    V1 Short Link uses the `apiKey` query parameter and does not use
+    request-signature headers.
+
+    The Payin Session status request uses:
+
+    ```http
+    GET /v2/payins/{id}
+    ```
+
+    It uses these mandatory headers:
+
+    ```http
+    X-API-Key
+    X-Timestamp
+    X-Signature
+    ```
+
+    The request signature is generated from:
+
+    ```text
+    UPPERCASE_METHOD
+    URI_PATH
+    ISO-8601_TIMESTAMP
+    RAW_REQUEST_BODY
+    ```
+
+    The query string is not included in the signed URI path.
+
+    ## Callback verification
+
+    V1 Short Link callbacks do not contain a signature.
+
+    The callback is treated only as a notification that a transaction may
+    have changed. Odoo does not trust the callback's `status` or amount.
+
+    Odoo uses the callback's reference and session ID to locate the original
+    transaction. It then retrieves the current transaction using the
+    authenticated and signed V2 Payin Session API.
+
+    Odoo only processes the status returned by the authenticated API response
+    after verifying the returned reference and session ID.
+
+    This prevents an unsigned callback payload from independently marking
+    an order as paid.
+
+    The callback endpoint is:
+
+    ```text
+    https://your-public-domain/payment/weselaja/webhook
+    ```
+
+    The endpoint acknowledges successful processing with HTTP 200.
+    If status verification fails, it returns a non-200 response so WeselAja
+    can retry delivery.
+
+    The callback handler uses short API timeouts to target the documented
+    five-second acknowledgement window. Network and server latency can still
+    affect the actual response time.
+
+    ## Payin status refresh
+
+    The module queries the V2 Payin Session API using the stored `sessionId`.
+
+    The request is signed with the merchant Secret Key. When `sync=true`
+    is used, WeselAja checks the payment provider while the session is pending.
+
+    The returned reference and session ID must match the Odoo transaction.
+
+    ## Payment statuses
+
+    | WeselAja status | Odoo transaction state |
+    |---|---|
+    | SUCCESS | Done |
+    | SUCCESSFUL | Done |
+    | PAID | Done |
+    | COMPLETED | Done |
+    | SETTLED | Done |
+    | PENDING | Pending |
+    | PROCESSING | Pending |
+    | ACTIVE | Pending |
+    | FAILED | Error |
+    | DECLINED | Error |
+    | REJECTED | Error |
+    | EXPIRED | Cancel |
+    | CANCELLED | Cancel |
+    | CANCELED | Cancel |
+
+    ## Security notes
+
+    - Never log the V1 Short Link URL because it contains the API Key query parameter.
+    - Do not mark an Odoo transaction paid based only on the unsigned callback.
+    - Do not trust the browser return URL as payment confirmation.
+    - Use the authenticated V2 Payin Session response as the status source.
+    - Keep the merchant API Secret Key private.
+    - Use sandbox credentials until the complete payment flow has been tested.
+
+    ## Testing
+
+    Run the Odoo test suite with:
+
+    ```bash
+    ./odoo-bin \
+      -d your_database \
+      -i __MODULE_NAME__ \
+      --test-enable \
+      --stop-after-init
+    ```
+
+    The generated tests cover signature generation, reference validation,
+    phone normalization, status mapping, and response parsing.
+
+    They do not make live calls to WeselAja.
     """;
 }

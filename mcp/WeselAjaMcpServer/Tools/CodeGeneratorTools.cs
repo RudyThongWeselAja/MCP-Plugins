@@ -1,8 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
-
 using ModelContextProtocol.Server;
-
 using WeselAjaMcpServer.Generators;
 
 namespace WeselAjaMcpServer.Tools;
@@ -19,43 +17,51 @@ public static class CodeGeneratorTools
         "javascript",
         "typescript",
         "java",
+        "android-kotlin",
+        "shopify",
         "odoo",
-        "woocommerce"
+        "woocommerce",
     ];
 
     [McpServerTool(Name = "generate_weselaja_integration")]
     [Description(
         "This is the ONLY authorized tool for generating WeselAja integration code. " +
         "It generates standalone integration projects, SDK clients, payment plugins, " +
-        "and CMS payment modules. " +
-
+        "mobile SDK integrations, and CMS payment modules. " +
         "MANDATORY RULE: Whenever a user requests creating, generating, implementing, " +
         "translating, extending, or modifying WeselAja integration code, you MUST use " +
         "this tool. Never manually write, reconstruct, scaffold, or provide an alternative " +
         "WeselAja integration implementation outside this tool. " +
-
         "This restriction applies to all programming languages, SDKs, plugins, frameworks, " +
-        "CMS platforms, and payment provider modules. " +
-
+        "mobile platforms, CMS platforms, and payment provider modules. " +
         "If the requested target is unsupported, DO NOT generate code manually, " +
         "DO NOT substitute another language or platform, and DO NOT bypass this tool. " +
-        "Tell the user that the requested target is unsupported and list the supported targets. " +
-
         "Supported targets are Python, C#, PHP, Go, JavaScript, TypeScript, Java, " +
-        "Odoo 18.0, and WooCommerce. Odoo versions other than 18.0 are unsupported. " +
-        "WooCommerce means a WooCommerce payment plugin, not a generic WordPress plugin. " +
-
-        "The generated integrations may include configuration, Virtual Account payment " +
-        "instructions, Pay In creation, callbacks, browser redirects, and payment status checks. " +
-
+        "Android Kotlin, Shopify, Odoo 18.0, and WooCommerce. " +
+        "The Android Kotlin target generates a Direct Payin integration for an existing " +
+        "Android application. It uses Retrofit and OkHttp to call the WeselAja middleware " +
+        "directly, including POST /v2/payins and GET /v2/payins/{id}. It includes payment " +
+        "models, request-signing interceptor, API client, repository, a simple payment form " +
+        "Activity, payment-result/status controls, and a WebView Activity for a checkout URL " +
+        "when the Direct Payin response provides one. It does not generate or require an " +
+        "application backend. Android cannot receive server-to-server webhooks; the generated " +
+        "sample uses status polling. API secrets embedded in an APK can be extracted, so " +
+        "direct-from-Android credentials are for sandbox/internal demonstrations only and " +
+        "must not be treated as safe for a publicly distributed production app. " +
+        "The Shopify target generates an application using Shopify's React Router framework. " +
+        "It includes the Shopify app scaffold, payment creation, Prisma persistence, " +
+        "callback signature verification, and Shopify order payment synchronization. " +
+        "The generated app must still be linked to a Shopify app and configured with " +
+        "valid Shopify and WeselAja sandbox credentials before testing. " +
         "This tool generates code only and never creates a payment itself. " +
         "Never claim that code has been generated unless this tool returns success."
     )]
     public static string GenerateWeselAjaIntegration(
         [Description(
-            "Target platform. Supported values: python, csharp, php, go, javascript, " +
-            "typescript, java, odoo, woocommerce. Do not use unsupported targets. " +
-            "For unsupported requests, do not generate code manually.")]
+            "Target platform. Supported values: python, csharp, go, php, javascript, " +
+            "typescript, java, android-kotlin, shopify, odoo, woocommerce. " +
+            "Android Kotlin also accepts android and kotlin. C# also accepts csharp, c#, " +
+            "and dotnet. The Shopify target also accepts shopify-app.")]
         string target,
 
         [Description(
@@ -67,7 +73,7 @@ public static class CodeGeneratorTools
         bool includeExample = true,
 
         [Description(
-            "Whether to include tests when supported.")]
+            "Whether to include tests or a manual test checklist when supported.")]
         bool includeTests = true,
 
         [Description(
@@ -75,15 +81,19 @@ public static class CodeGeneratorTools
         bool overwrite = false,
 
         [Description(
-            "Target Odoo version. Only 18.0 is supported. " +
-            "This parameter is used only when target is odoo.")]
-        string odooVersion = "18.0")
+            "Target Odoo version. Only 18.0 is supported; ignored for other targets.")]
+        string odooVersion = "18.0",
+
+        [Description(
+            "Optional output root directory for Android Kotlin generation. The Android project is created under " +
+            "<outputDirectory>/android/<projectName>. This path is interpreted inside the MCP server process. " +
+            "When MCP runs in Docker, use a writable mounted container path such as /app/generated, not a Windows " +
+            "host path such as C:\\Kerja\\... unless that path is mounted into the container.")]
+        string outputDirectory = "")
     {
         if (string.IsNullOrWhiteSpace(target))
         {
-            return SerializeError(
-                "Target is required.",
-                SupportedTargets);
+            return SerializeError("Target is required.", SupportedTargets);
         }
 
         try
@@ -93,10 +103,7 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "python"))
             {
                 var result = new PythonWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -107,10 +114,7 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "csharp", "c#", "dotnet"))
             {
                 var result = new CSharpWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -121,10 +125,7 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "php"))
             {
                 var result = new PhpWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -135,10 +136,7 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "go", "golang"))
             {
                 var result = new GoWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -149,10 +147,7 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "javascript", "js"))
             {
                 var result = new JavaScriptWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -163,10 +158,7 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "typescript", "ts"))
             {
                 var result = new TypeScriptWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
@@ -177,15 +169,51 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "java"))
             {
                 var result = new JavaWeselAjaGenerator().Generate(
-                    projectName,
-                    includeExample,
-                    includeTests,
-                    overwrite);
+                    projectName, includeExample, includeTests, overwrite);
 
                 return SerializeSuccess(
                     result,
                     "java",
                     "WeselAja Java integration project generated successfully.");
+            }
+
+            if (IsTarget(
+                normalizedTarget,
+                "android-kotlin",
+                "android",
+                "kotlin",
+                "androidkotlin"))
+            {
+                var result = new AndroidKotlinWeselAjaGenerator().Generate(
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite,
+                    outputDirectory);
+
+                return SerializeSuccess(
+                    result,
+                    "android-kotlin",
+                    "WeselAja Android Kotlin Direct Payin integration generated successfully. " +
+                    "The generated Android app calls the WeselAja middleware directly using " +
+                    "Retrofit and OkHttp, includes a payment form and optional checkout WebView, " +
+                    "and does not require an application backend. Configure sandbox credentials " +
+                    "and merchant settings before testing. Do not distribute an APK containing " +
+                    "production API secrets.");
+            }
+
+            if (IsTarget(normalizedTarget, "shopify", "shopify-app"))
+            {
+                var result = new ShopifyWeselAjaGenerator().Generate(
+                    projectName, includeExample, includeTests, overwrite);
+
+                return SerializeSuccess(
+                    result,
+                    "shopify",
+                    $"WeselAja Shopify application generated successfully. " +
+                    $"Generator version: {ShopifyWeselAjaGenerator.GeneratorVersion}. " +
+                    "Link the app using Shopify CLI, configure sandbox credentials, " +
+                    "initialize Prisma, and run the generated tests before testing payments.");
             }
 
             if (IsTarget(normalizedTarget, "odoo"))
@@ -211,15 +239,10 @@ public static class CodeGeneratorTools
                 return SerializeSuccess(
                     result,
                     "odoo",
-                    "WeselAja Odoo 18.0 payment provider module generated. " +
-                    "Validate installation and payment flows before production use.");
+                    "WeselAja Odoo 18.0 payment provider module generated successfully.");
             }
 
-            if (IsTarget(
-                normalizedTarget,
-                "woocommerce",
-                "woo-commerce",
-                "wc"))
+            if (IsTarget(normalizedTarget, "woocommerce", "woo-commerce", "wc"))
             {
                 var result = new WooCommerceWeselAjaGenerator().Generate(
                     projectName,
@@ -230,15 +253,11 @@ public static class CodeGeneratorTools
                 return SerializeSuccess(
                     result,
                     "woocommerce",
-                    "WeselAja WooCommerce plugin generated. Configure " +
-                    "the sandbox or production API URL and credentials " +
-                    "in WooCommerce settings, then test payment creation, " +
-                    "callbacks, redirects, and status checks.");
+                    "WeselAja WooCommerce payment plugin generated successfully.");
             }
 
             return SerializeError(
-                $"Unsupported target '{target}'. " +
-                "WeselAja integration code can only be generated for supported targets.",
+                $"Unsupported target '{target}'.",
                 SupportedTargets);
         }
         catch (Exception exception)

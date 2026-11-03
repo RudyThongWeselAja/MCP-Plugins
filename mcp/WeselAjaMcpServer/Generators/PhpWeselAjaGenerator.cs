@@ -1803,7 +1803,7 @@ public sealed class PhpWeselAjaGenerator
                     $responseBody === false
                 ) {
                     $error = curl_error($curl);
-                    curl_close($curl);
+                    
 
                     throw new WeselAjaApiException(
                         'Unable to connect to WeselAja: ' .
@@ -1811,7 +1811,7 @@ public sealed class PhpWeselAjaGenerator
                     );
                 }
 
-                curl_close($curl);
+                
 
                 if (
                     !is_string(
@@ -2101,7 +2101,7 @@ public sealed class PhpWeselAjaGenerator
                     $responseBody === false
                 ) {
                     $error = curl_error($curl);
-                    curl_close($curl);
+                    
 
                     throw new WeselAjaApiException(
                         'Unable to connect to WeselAja: ' .
@@ -2109,7 +2109,7 @@ public sealed class PhpWeselAjaGenerator
                     );
                 }
 
-                curl_close($curl);
+                
 
                 if (
                     !is_string(
