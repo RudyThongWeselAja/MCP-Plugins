@@ -1,8 +1,17 @@
+
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+
 using DotNetEnv;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
+
 using WeselAjaMcp.Configuration;
 using WeselAjaMcp.Security;
 using WeselAjaMcp.Services;
@@ -66,6 +75,90 @@ static async Task RunHttpServer(string[] args)
 
     var app = builder.Build();
 
+    var accessToken = Environment
+        .GetEnvironmentVariable("MCP_ACCESS_TOKEN")
+        ?.Trim();
+
+    if (string.IsNullOrWhiteSpace(accessToken))
+    {
+        throw new InvalidOperationException(
+            "MCP_ACCESS_TOKEN environment variable is required."
+        );
+    }
+
+    var expectedTokenBytes =
+        Encoding.UTF8.GetBytes(accessToken);
+
+    app.Use(async (context, next) =>
+    {
+        var isMcpEndpoint =
+            context.Request.Path.StartsWithSegments(
+                "/mcp",
+                StringComparison.OrdinalIgnoreCase
+            );
+
+        if (!isMcpEndpoint)
+        {
+            await next();
+            return;
+        }
+
+        const string bearerPrefix = "Bearer ";
+
+        var authorization = context.Request
+            .Headers["Authorization"]
+            .ToString();
+
+        if (!authorization.StartsWith(
+            bearerPrefix,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode =
+                StatusCodes.Status401Unauthorized;
+
+            context.Response.Headers["WWW-Authenticate"] =
+                "Bearer";
+
+            await context.Response.WriteAsync(
+                "Unauthorized"
+            );
+
+            return;
+        }
+
+        var providedToken = authorization[
+            bearerPrefix.Length..].Trim();
+
+        var providedTokenBytes =
+            Encoding.UTF8.GetBytes(providedToken);
+
+        var isValid =
+            providedTokenBytes.Length ==
+                expectedTokenBytes.Length
+            &&
+            CryptographicOperations.FixedTimeEquals(
+                providedTokenBytes,
+                expectedTokenBytes
+            );
+
+        if (!isValid)
+        {
+            context.Response.StatusCode =
+                StatusCodes.Status401Unauthorized;
+
+            context.Response.Headers["WWW-Authenticate"] =
+                "Bearer";
+
+            await context.Response.WriteAsync(
+                "Unauthorized"
+            );
+
+            return;
+        }
+
+        await next();
+    });
+
     app.MapMcp("/mcp");
 
     app.MapGet(
@@ -85,8 +178,12 @@ static async Task RunHttpServer(string[] args)
 
     Console.Error.WriteLine("WeselAja MCP Server");
     Console.Error.WriteLine("Transport : Streamable HTTP");
-    Console.Error.WriteLine($"Endpoint  : {httpUrl.TrimEnd('/')}/mcp");
-    Console.Error.WriteLine($"Health    : {httpUrl.TrimEnd('/')}/health");
+    Console.Error.WriteLine(
+        $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp"
+    );
+    Console.Error.WriteLine(
+        $"Health    : {httpUrl.TrimEnd('/')}/health"
+    );
 
     await app.RunAsync(httpUrl);
 }
