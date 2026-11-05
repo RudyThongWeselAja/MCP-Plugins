@@ -1,5 +1,10 @@
+
+using System;
 using System.ComponentModel;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
+
 using ModelContextProtocol.Server;
 using WeselAjaMcpServer.Generators;
 
@@ -54,7 +59,15 @@ public static class CodeGeneratorTools
         "The generated app must still be linked to a Shopify app and configured with " +
         "valid Shopify and WeselAja sandbox credentials before testing. " +
         "This tool generates code only and never creates a payment itself. " +
-        "Never claim that code has been generated unless this tool returns success."
+        "Never claim that code has been generated unless this tool returns success. " +
+        "IMPORTANT FOR REMOTE MCP CLIENTS: Generated projects are stored on the MCP server. " +
+        "When a successful response contains downloadUrl, the client should download the ZIP " +
+        "using HTTP GET and an Authorization Bearer token, then extract it into the returned " +
+        "workspaceRelativeDirectory in the current local workspace. " +
+        "The outputDirectory field is the server-side path and is NOT a local workspace path. " +
+        "Never claim files are already present in the local workspace until the download " +
+        "and extraction have actually completed. " +
+        "The download URL is available only when MCP_PUBLIC_BASE_URL is configured."
     )]
     public static string GenerateWeselAjaIntegration(
         [Description(
@@ -85,10 +98,11 @@ public static class CodeGeneratorTools
         string odooVersion = "18.0",
 
         [Description(
-            "Optional output root directory for Android Kotlin generation. The Android project is created under " +
-            "<outputDirectory>/android/<projectName>. This path is interpreted inside the MCP server process. " +
-            "When MCP runs in Docker, use a writable mounted container path such as /app/generated, not a Windows " +
-            "host path such as C:\\Kerja\\... unless that path is mounted into the container.")]
+            "Optional output root directory for Android Kotlin generation. The Android " +
+            "project is created under <outputDirectory>/android/<projectName>. " +
+            "This path is interpreted inside the MCP server process. When MCP runs " +
+            "in Docker, use a writable mounted container path such as /app/generated, " +
+            "not a Windows host path unless that path is mounted into the container.")]
         string outputDirectory = "")
     {
         if (string.IsNullOrWhiteSpace(target))
@@ -103,78 +117,113 @@ public static class CodeGeneratorTools
             if (IsTarget(normalizedTarget, "python"))
             {
                 var result = new PythonWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "python",
-                    "WeselAja Python integration project generated successfully.");
+                    "WeselAja Python integration project generated successfully."
+                );
             }
 
             if (IsTarget(normalizedTarget, "csharp", "c#", "dotnet"))
             {
                 var result = new CSharpWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "csharp",
-                    "WeselAja C# integration project generated successfully.");
+                    "WeselAja C# integration project generated successfully."
+                );
             }
 
             if (IsTarget(normalizedTarget, "php"))
             {
                 var result = new PhpWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "php",
-                    "WeselAja PHP integration project generated successfully.");
+                    "WeselAja PHP integration project generated successfully."
+                );
             }
 
             if (IsTarget(normalizedTarget, "go", "golang"))
             {
                 var result = new GoWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "go",
-                    "WeselAja Go integration project generated successfully.");
+                    "WeselAja Go integration project generated successfully."
+                );
             }
 
             if (IsTarget(normalizedTarget, "javascript", "js"))
             {
                 var result = new JavaScriptWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "javascript",
-                    "WeselAja JavaScript integration project generated successfully.");
+                    "WeselAja JavaScript integration project generated successfully."
+                );
             }
 
             if (IsTarget(normalizedTarget, "typescript", "ts"))
             {
                 var result = new TypeScriptWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "typescript",
-                    "WeselAja TypeScript integration project generated successfully.");
+                    "WeselAja TypeScript integration project generated successfully."
+                );
             }
 
             if (IsTarget(normalizedTarget, "java"))
             {
                 var result = new JavaWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "java",
-                    "WeselAja Java integration project generated successfully.");
+                    "WeselAja Java integration project generated successfully."
+                );
             }
 
             if (IsTarget(
@@ -189,7 +238,8 @@ public static class CodeGeneratorTools
                     includeExample,
                     includeTests,
                     overwrite,
-                    outputDirectory);
+                    outputDirectory
+                );
 
                 return SerializeSuccess(
                     result,
@@ -199,13 +249,18 @@ public static class CodeGeneratorTools
                     "Retrofit and OkHttp, includes a payment form and optional checkout WebView, " +
                     "and does not require an application backend. Configure sandbox credentials " +
                     "and merchant settings before testing. Do not distribute an APK containing " +
-                    "production API secrets.");
+                    "production API secrets."
+                );
             }
 
             if (IsTarget(normalizedTarget, "shopify", "shopify-app"))
             {
                 var result = new ShopifyWeselAjaGenerator().Generate(
-                    projectName, includeExample, includeTests, overwrite);
+                    projectName,
+                    includeExample,
+                    includeTests,
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
@@ -213,7 +268,8 @@ public static class CodeGeneratorTools
                     $"WeselAja Shopify application generated successfully. " +
                     $"Generator version: {ShopifyWeselAjaGenerator.GeneratorVersion}. " +
                     "Link the app using Shopify CLI, configure sandbox credentials, " +
-                    "initialize Prisma, and run the generated tests before testing payments.");
+                    "initialize Prisma, and run the generated tests before testing payments."
+                );
             }
 
             if (IsTarget(normalizedTarget, "odoo"))
@@ -226,7 +282,8 @@ public static class CodeGeneratorTools
                     return SerializeError(
                         $"Unsupported Odoo version '{odooVersion}'. " +
                         "Only Odoo 18.0 is supported.",
-                        SupportedTargets);
+                        SupportedTargets
+                    );
                 }
 
                 var result = new OdooWeselAjaGenerator().Generate(
@@ -234,31 +291,40 @@ public static class CodeGeneratorTools
                     "18.0",
                     includeExample,
                     includeTests,
-                    overwrite);
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "odoo",
-                    "WeselAja Odoo 18.0 payment provider module generated successfully.");
+                    "WeselAja Odoo 18.0 payment provider module generated successfully."
+                );
             }
 
-            if (IsTarget(normalizedTarget, "woocommerce", "woo-commerce", "wc"))
+            if (IsTarget(
+                normalizedTarget,
+                "woocommerce",
+                "woo-commerce",
+                "wc"))
             {
                 var result = new WooCommerceWeselAjaGenerator().Generate(
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite);
+                    overwrite
+                );
 
                 return SerializeSuccess(
                     result,
                     "woocommerce",
-                    "WeselAja WooCommerce payment plugin generated successfully.");
+                    "WeselAja WooCommerce payment plugin generated successfully."
+                );
             }
 
             return SerializeError(
                 $"Unsupported target '{target}'.",
-                SupportedTargets);
+                SupportedTargets
+            );
         }
         catch (Exception exception)
         {
@@ -268,7 +334,8 @@ public static class CodeGeneratorTools
                     success = false,
                     error = exception.Message
                 },
-                JsonOptions());
+                JsonOptions()
+            );
         }
     }
 
@@ -280,7 +347,8 @@ public static class CodeGeneratorTools
             string.Equals(
                 target,
                 alias,
-                StringComparison.OrdinalIgnoreCase));
+                StringComparison.OrdinalIgnoreCase
+            ));
     }
 
     private static string SerializeSuccess(
@@ -288,6 +356,8 @@ public static class CodeGeneratorTools
         string target,
         string message)
     {
+        var downloadInfo = BuildDownloadInfo(result);
+
         return JsonSerializer.Serialize(
             new
             {
@@ -296,9 +366,143 @@ public static class CodeGeneratorTools
                 projectName = result.ProjectName,
                 outputDirectory = result.OutputDirectory,
                 files = result.Files,
-                message
+
+                downloadUrl = downloadInfo.Url,
+                downloadFileName = downloadInfo.FileName,
+                downloadMethod = downloadInfo.Url is null ? null : "GET",
+                downloadAuthentication = downloadInfo.Url is null
+                    ? null
+                    : "Bearer",
+                downloadTokenEnvironmentVariable = downloadInfo.Url is null
+                    ? null
+                    : "MCP_ACCESS_TOKEN",
+                workspaceRelativeDirectory =
+                    downloadInfo.WorkspaceDirectory,
+
+                message = downloadInfo.Url is null
+                    ? message +
+                      " The project was generated on the MCP server, " +
+                      "but no download URL is available. Configure " +
+                      "MCP_PUBLIC_BASE_URL to enable remote downloads."
+                    : message +
+                      " A ZIP download URL is available. Remote clients " +
+                      "can download the project using the Bearer token " +
+                      "and extract it into the suggested workspace directory."
             },
-            JsonOptions());
+            JsonOptions()
+        );
+    }
+
+    private static (
+        string? Url,
+        string? FileName,
+        string? WorkspaceDirectory
+    ) BuildDownloadInfo(GenerationResult result)
+    {
+        var publicBaseUrl = Environment
+            .GetEnvironmentVariable("MCP_PUBLIC_BASE_URL")
+            ?.Trim()
+            .TrimEnd('/');
+
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+        {
+            return (null, null, null);
+        }
+
+        if (!Uri.TryCreate(
+            publicBaseUrl,
+            UriKind.Absolute,
+            out var baseUri))
+        {
+            return (null, null, null);
+        }
+
+        var isSecureScheme =
+            baseUri.Scheme == Uri.UriSchemeHttps;
+
+        var isLocalHttp =
+            baseUri.Scheme == Uri.UriSchemeHttp
+            && baseUri.IsLoopback;
+
+        if (!isSecureScheme && !isLocalHttp)
+        {
+            return (null, null, null);
+        }
+
+        if (!string.IsNullOrEmpty(baseUri.Query) ||
+            !string.IsNullOrEmpty(baseUri.Fragment) ||
+            !string.IsNullOrEmpty(baseUri.UserInfo))
+        {
+            return (null, null, null);
+        }
+
+        try
+        {
+            var generatedRoot = Path.GetFullPath(
+                Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "generated"
+                )
+            );
+
+            var outputDirectory = Path.GetFullPath(
+                result.OutputDirectory
+            );
+
+            var relativeDirectory = Path.GetRelativePath(
+                generatedRoot,
+                outputDirectory
+            );
+
+            if (Path.IsPathRooted(relativeDirectory) ||
+                relativeDirectory == ".." ||
+                relativeDirectory.StartsWith(
+                    ".." + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal
+                ) ||
+                relativeDirectory.StartsWith(
+                    ".." + Path.AltDirectorySeparatorChar,
+                    StringComparison.Ordinal
+                ))
+            {
+                return (null, null, null);
+            }
+
+            var segments = relativeDirectory.Split(
+                new[]
+                {
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar
+                },
+                StringSplitOptions.RemoveEmptyEntries
+            );
+
+            if (segments.Length != 2)
+            {
+                return (null, null, null);
+            }
+
+            var targetDirectory = segments[0];
+            var projectDirectory = segments[1];
+
+            var downloadUrl =
+                $"{baseUri.AbsoluteUri.TrimEnd('/')}/downloads/" +
+                $"{Uri.EscapeDataString(targetDirectory)}/" +
+                $"{Uri.EscapeDataString(projectDirectory)}";
+
+            var workspaceDirectory =
+                $"generated/{targetDirectory}/{projectDirectory}";
+
+            return (
+                downloadUrl,
+                $"{result.ProjectName}.zip",
+                workspaceDirectory
+            );
+        }
+        catch
+        {
+            return (null, null, null);
+        }
     }
 
     private static string SerializeError(
@@ -312,7 +516,8 @@ public static class CodeGeneratorTools
                 error,
                 supportedTargets
             },
-            JsonOptions());
+            JsonOptions()
+        );
     }
 
     private static JsonSerializerOptions JsonOptions()

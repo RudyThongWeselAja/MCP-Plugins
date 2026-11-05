@@ -1,10 +1,15 @@
 
 using System;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 using DotNetEnv;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -91,13 +96,18 @@ static async Task RunHttpServer(string[] args)
 
     app.Use(async (context, next) =>
     {
-        var isMcpEndpoint =
+        var isProtectedEndpoint =
             context.Request.Path.StartsWithSegments(
                 "/mcp",
                 StringComparison.OrdinalIgnoreCase
+            )
+            ||
+            context.Request.Path.StartsWithSegments(
+                "/downloads",
+                StringComparison.OrdinalIgnoreCase
             );
 
-        if (!isMcpEndpoint)
+        if (!isProtectedEndpoint)
         {
             await next();
             return;
@@ -171,6 +181,11 @@ static async Task RunHttpServer(string[] args)
         })
     );
 
+    app.MapGet(
+        "/downloads/{target}/{projectName}",
+        DownloadGeneratedProject
+    );
+
     var httpUrl = (
         Environment.GetEnvironmentVariable("MCP_HTTP_URL")
         ?? "http://0.0.0.0:3001"
@@ -184,8 +199,274 @@ static async Task RunHttpServer(string[] args)
     Console.Error.WriteLine(
         $"Health    : {httpUrl.TrimEnd('/')}/health"
     );
+    Console.Error.WriteLine(
+        $"Downloads : {httpUrl.TrimEnd('/')}/downloads"
+    );
 
     await app.RunAsync(httpUrl);
+}
+
+static async Task<IResult> DownloadGeneratedProject(
+    HttpContext context,
+    string target,
+    string projectName,
+    CancellationToken cancellationToken)
+{
+    static bool IsSafeSegment(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value != "."
+            && value != ".."
+            && value.All(c =>
+                char.IsAsciiLetterOrDigit(c)
+                || c == '-'
+                || c == '_'
+                || c == '.'
+            );
+    }
+
+    if (!IsSafeSegment(target) ||
+        !IsSafeSegment(projectName))
+    {
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = "Invalid target or project name."
+        });
+    }
+
+    var generatedRoot = Path.GetFullPath(
+        Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "generated"
+        )
+    );
+
+    if (!Directory.Exists(generatedRoot))
+    {
+        return Results.NotFound(new
+        {
+            success = false,
+            message = "Generated directory not found."
+        });
+    }
+
+    var targetDirectory = Path.GetFullPath(
+        Path.Combine(generatedRoot, target)
+    );
+
+    var projectDirectory = Path.GetFullPath(
+        Path.Combine(targetDirectory, projectName)
+    );
+
+    var comparison = OperatingSystem.IsWindows()
+        ? StringComparison.OrdinalIgnoreCase
+        : StringComparison.Ordinal;
+
+    var rootPrefix =
+        generatedRoot.TrimEnd(Path.DirectorySeparatorChar)
+        + Path.DirectorySeparatorChar;
+
+    var targetPrefix =
+        targetDirectory.TrimEnd(Path.DirectorySeparatorChar)
+        + Path.DirectorySeparatorChar;
+
+    if (!targetDirectory.StartsWith(
+            rootPrefix,
+            comparison)
+        ||
+        !projectDirectory.StartsWith(
+            targetPrefix,
+            comparison))
+    {
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = "Project path is outside the generated directory."
+        });
+    }
+
+    if (!Directory.Exists(targetDirectory) ||
+        !Directory.Exists(projectDirectory))
+    {
+        return Results.NotFound(new
+        {
+            success = false,
+            message = "Generated project not found."
+        });
+    }
+
+    var targetInfo = new DirectoryInfo(targetDirectory);
+    var projectInfo = new DirectoryInfo(projectDirectory);
+
+    if ((targetInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
+        (projectInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+    {
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = "Symbolic link directories are not supported."
+        });
+    }
+
+    var enumerationOptions = new EnumerationOptions
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        IgnoreInaccessible = false,
+        ReturnSpecialDirectories = false
+    };
+
+    var files = Directory
+        .EnumerateFiles(
+            projectDirectory,
+            "*",
+            enumerationOptions
+        )
+        .Where(file =>
+        {
+            var name = Path.GetFileName(file);
+
+            if (string.Equals(
+                name,
+                ".env",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (name.StartsWith(
+                    ".env.",
+                    StringComparison.OrdinalIgnoreCase)
+                &&
+                !string.Equals(
+                    name,
+                    ".env.example",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var relativePath = Path.GetRelativePath(
+                projectDirectory,
+                file
+            );
+
+            var segments = relativePath.Split(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar
+            );
+
+            if (segments.Any(segment =>
+                string.Equals(
+                    segment,
+                    ".git",
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            return true;
+        })
+        .ToList();
+
+    if (files.Count == 0)
+    {
+        return Results.NotFound(new
+        {
+            success = false,
+            message = "Project contains no downloadable files."
+        });
+    }
+
+    const int maxFiles = 2000;
+    const long maxTotalBytes = 100 * 1024 * 1024;
+
+    if (files.Count > maxFiles)
+    {
+        return Results.StatusCode(
+            StatusCodes.Status413PayloadTooLarge
+        );
+    }
+
+    long totalBytes = 0;
+
+    foreach (var file in files)
+    {
+        var fileSize = new FileInfo(file).Length;
+
+        if (fileSize > maxTotalBytes - totalBytes)
+        {
+            return Results.StatusCode(
+                StatusCodes.Status413PayloadTooLarge
+            );
+        }
+
+        totalBytes += fileSize;
+    }
+
+    var memoryStream = new MemoryStream();
+
+    try
+    {
+        using (var archive = new ZipArchive(
+            memoryStream,
+            ZipArchiveMode.Create,
+            leaveOpen: true))
+        {
+            foreach (var file in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var relativePath = Path
+                    .GetRelativePath(projectDirectory, file)
+                    .Replace('\\', '/');
+
+                if (Path.IsPathRooted(relativePath) ||
+                    relativePath.Split('/').Any(segment =>
+                        segment == ".."))
+                {
+                    continue;
+                }
+
+                var entry = archive.CreateEntry(
+                    relativePath,
+                    CompressionLevel.Fastest
+                );
+
+                await using var input = new FileStream(
+                    file,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    81920,
+                    useAsync: true
+                );
+
+                await using var output = entry.Open();
+
+                await input.CopyToAsync(
+                    output,
+                    cancellationToken
+                );
+            }
+        }
+
+        memoryStream.Position = 0;
+
+        context.Response.Headers.CacheControl = "no-store";
+
+        return Results.File(
+            memoryStream,
+            "application/zip",
+            $"{projectName}.zip"
+        );
+    }
+    catch
+    {
+        await memoryStream.DisposeAsync();
+        throw;
+    }
 }
 
 static void ConfigureWeselAjaServices(
