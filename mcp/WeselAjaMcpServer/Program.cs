@@ -18,6 +18,7 @@ using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 
 using WeselAjaMcp.Configuration;
+using WeselAjaMcpServer.Generators;
 using WeselAjaMcp.Security;
 using WeselAjaMcp.Services;
 
@@ -182,7 +183,7 @@ static async Task RunHttpServer(string[] args)
     );
 
     app.MapGet(
-        "/downloads/{target}/{projectName}",
+        "/downloads/{requestId}/{target}/{projectName}",
         DownloadGeneratedProject
     );
 
@@ -208,6 +209,7 @@ static async Task RunHttpServer(string[] args)
 
 static async Task<IResult> DownloadGeneratedProject(
     HttpContext context,
+    string requestId,
     string target,
     string projectName,
     CancellationToken cancellationToken)
@@ -225,22 +227,19 @@ static async Task<IResult> DownloadGeneratedProject(
             );
     }
 
-    if (!IsSafeSegment(target) ||
+    if (!IsSafeSegment(requestId) ||
+        !IsSafeSegment(target) ||
         !IsSafeSegment(projectName))
     {
         return Results.BadRequest(new
         {
             success = false,
-            message = "Invalid target or project name."
+            message = "Invalid download request."
         });
     }
 
-    var generatedRoot = Path.GetFullPath(
-        Path.Combine(
-            Directory.GetCurrentDirectory(),
-            "generated"
-        )
-    );
+    var generatedRoot =
+        GeneratorOutputScope.GetDefaultRoot();
 
     if (!Directory.Exists(generatedRoot))
     {
@@ -251,8 +250,15 @@ static async Task<IResult> DownloadGeneratedProject(
         });
     }
 
+    var requestDirectory = Path.GetFullPath(
+        Path.Combine(
+            generatedRoot,
+            "requests",
+            requestId)
+    );
+
     var targetDirectory = Path.GetFullPath(
-        Path.Combine(generatedRoot, target)
+        Path.Combine(requestDirectory, target)
     );
 
     var projectDirectory = Path.GetFullPath(
@@ -263,8 +269,8 @@ static async Task<IResult> DownloadGeneratedProject(
         ? StringComparison.OrdinalIgnoreCase
         : StringComparison.Ordinal;
 
-    var rootPrefix =
-        generatedRoot.TrimEnd(Path.DirectorySeparatorChar)
+    var requestPrefix =
+        requestDirectory.TrimEnd(Path.DirectorySeparatorChar)
         + Path.DirectorySeparatorChar;
 
     var targetPrefix =
@@ -272,7 +278,7 @@ static async Task<IResult> DownloadGeneratedProject(
         + Path.DirectorySeparatorChar;
 
     if (!targetDirectory.StartsWith(
-            rootPrefix,
+            requestPrefix,
             comparison)
         ||
         !projectDirectory.StartsWith(
@@ -286,7 +292,8 @@ static async Task<IResult> DownloadGeneratedProject(
         });
     }
 
-    if (!Directory.Exists(targetDirectory) ||
+    if (!Directory.Exists(requestDirectory) ||
+        !Directory.Exists(targetDirectory) ||
         !Directory.Exists(projectDirectory))
     {
         return Results.NotFound(new
@@ -296,10 +303,12 @@ static async Task<IResult> DownloadGeneratedProject(
         });
     }
 
+    var requestInfo = new DirectoryInfo(requestDirectory);
     var targetInfo = new DirectoryInfo(targetDirectory);
     var projectInfo = new DirectoryInfo(projectDirectory);
 
-    if ((targetInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
+    if ((requestInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
+        (targetInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
         (projectInfo.Attributes & FileAttributes.ReparsePoint) != 0)
     {
         return Results.BadRequest(new

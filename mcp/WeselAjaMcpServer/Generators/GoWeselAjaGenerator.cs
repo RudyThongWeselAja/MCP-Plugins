@@ -15,8 +15,7 @@ public sealed class GoWeselAjaGenerator
                 projectName);
 
         var outputRoot =
-            Environment.GetEnvironmentVariable(
-                "WESELAJA_GENERATOR_OUTPUT_DIR");
+            GeneratorOutputScope.GetConfiguredRoot();
 
         outputRoot =
             string.IsNullOrWhiteSpace(

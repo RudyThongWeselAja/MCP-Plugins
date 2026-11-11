@@ -17,8 +17,7 @@ public sealed class OdooWeselAjaGenerator
         var version = NormalizeOdooVersion(odooVersion);
 
         var configuredOutputRoot =
-            Environment.GetEnvironmentVariable(
-                "WESELAJA_GENERATOR_OUTPUT_DIR");
+            GeneratorOutputScope.GetConfiguredRoot();
 
         var outputRoot = string.IsNullOrWhiteSpace(configuredOutputRoot)
             ? Path.Combine(Directory.GetCurrentDirectory(), "generated")

@@ -1122,8 +1122,7 @@ public sealed class AndroidKotlinWeselAjaGenerator
         var configuredRoot =
             !string.IsNullOrWhiteSpace(outputDirectoryOverride)
                 ? outputDirectoryOverride.Trim()
-                : Environment.GetEnvironmentVariable(
-                    "WESELAJA_GENERATOR_OUTPUT_DIR")?.Trim();
+                : GeneratorOutputScope.GetConfiguredRoot()?.Trim();
 
         var selectedRoot =
             string.IsNullOrWhiteSpace(configuredRoot)

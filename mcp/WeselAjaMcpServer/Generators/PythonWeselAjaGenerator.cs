@@ -12,8 +12,7 @@ public sealed class PythonWeselAjaGenerator
         var safeProjectName =
             SanitizeProjectName(projectName);
         var configuredOutputRoot =
-            Environment.GetEnvironmentVariable(
-                "WESELAJA_GENERATOR_OUTPUT_DIR");
+            GeneratorOutputScope.GetConfiguredRoot();
         var outputRoot =
             string.IsNullOrWhiteSpace(
                 configuredOutputRoot)

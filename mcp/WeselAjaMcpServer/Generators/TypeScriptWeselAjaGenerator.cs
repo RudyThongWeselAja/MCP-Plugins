@@ -419,8 +419,7 @@ public class TypeScriptWeselAjaGenerator
         string projectName)
     {
         var outputRoot =
-            Environment.GetEnvironmentVariable(
-                "WESELAJA_GENERATOR_OUTPUT_DIR");
+            GeneratorOutputScope.GetConfiguredRoot();
 
         outputRoot =
             string.IsNullOrWhiteSpace(outputRoot)

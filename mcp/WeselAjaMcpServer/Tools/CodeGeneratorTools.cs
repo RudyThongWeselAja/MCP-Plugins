@@ -30,44 +30,13 @@ public static class CodeGeneratorTools
 
     [McpServerTool(Name = "generate_weselaja_integration")]
     [Description(
-        "This is the ONLY authorized tool for generating WeselAja integration code. " +
-        "It generates standalone integration projects, SDK clients, payment plugins, " +
-        "mobile SDK integrations, and CMS payment modules. " +
-        "MANDATORY RULE: Whenever a user requests creating, generating, implementing, " +
-        "translating, extending, or modifying WeselAja integration code, you MUST use " +
-        "this tool. Never manually write, reconstruct, scaffold, or provide an alternative " +
-        "WeselAja integration implementation outside this tool. " +
-        "This restriction applies to all programming languages, SDKs, plugins, frameworks, " +
-        "mobile platforms, CMS platforms, and payment provider modules. " +
-        "If the requested target is unsupported, DO NOT generate code manually, " +
-        "DO NOT substitute another language or platform, and DO NOT bypass this tool. " +
-        "Supported targets are Python, C#, PHP, Go, JavaScript, TypeScript, Java, " +
-        "Android Kotlin, Shopify, Odoo 18.0, and WooCommerce. " +
-        "The Android Kotlin target generates a Direct Payin integration for an existing " +
-        "Android application. It uses Retrofit and OkHttp to call the WeselAja middleware " +
-        "directly, including POST /v2/payins and GET /v2/payins/{id}. It includes payment " +
-        "models, request-signing interceptor, API client, repository, a simple payment form " +
-        "Activity, payment-result/status controls, and a WebView Activity for a checkout URL " +
-        "when the Direct Payin response provides one. It does not generate or require an " +
-        "application backend. Android cannot receive server-to-server webhooks; the generated " +
-        "sample uses status polling. API secrets embedded in an APK can be extracted, so " +
-        "direct-from-Android credentials are for sandbox/internal demonstrations only and " +
-        "must not be treated as safe for a publicly distributed production app. " +
-        "The Shopify target generates an application using Shopify's React Router framework. " +
-        "It includes the Shopify app scaffold, payment creation, Prisma persistence, " +
-        "callback signature verification, and Shopify order payment synchronization. " +
-        "The generated app must still be linked to a Shopify app and configured with " +
-        "valid Shopify and WeselAja sandbox credentials before testing. " +
-        "This tool generates code only and never creates a payment itself. " +
-        "Never claim that code has been generated unless this tool returns success. " +
-        "IMPORTANT FOR REMOTE MCP CLIENTS: Generated projects are stored on the MCP server. " +
-        "When a successful response contains downloadUrl, the client should download the ZIP " +
-        "using HTTP GET and an Authorization Bearer token, then extract it into the returned " +
-        "workspaceRelativeDirectory in the current local workspace. " +
-        "The outputDirectory field is the server-side path and is NOT a local workspace path. " +
-        "Never claim files are already present in the local workspace until the download " +
-        "and extraction have actually completed. " +
-        "The download URL is available only when MCP_PUBLIC_BASE_URL is configured."
+        "Generate a ready-to-download WeselAja integration project only for a supported " +
+        "target: Python, C#, PHP, Go, JavaScript, TypeScript, Java, Android Kotlin, " +
+        "Shopify, Odoo 18.0, or WooCommerce. Use this tool when the user asks to create " +
+        "a WeselAja integration for one of those targets. Do not create an integration for " +
+        "an unsupported platform. Each generation is isolated on the server, so the same " +
+        "project name can be used safely by different users. On success, return the download " +
+        "URL and tell the user the project is ready to download."
     )]
     public static string GenerateWeselAjaIntegration(
         [Description(
@@ -90,20 +59,8 @@ public static class CodeGeneratorTools
         bool includeTests = true,
 
         [Description(
-            "Whether an existing generated project may be overwritten.")]
-        bool overwrite = false,
-
-        [Description(
             "Target Odoo version. Only 18.0 is supported; ignored for other targets.")]
-        string odooVersion = "18.0",
-
-        [Description(
-            "Optional output root directory for Android Kotlin generation. The Android " +
-            "project is created under <outputDirectory>/android/<projectName>. " +
-            "This path is interpreted inside the MCP server process. When MCP runs " +
-            "in Docker, use a writable mounted container path such as /app/generated, " +
-            "not a Windows host path unless that path is mounted into the container.")]
-        string outputDirectory = "")
+        string odooVersion = "18.0")
     {
         if (string.IsNullOrWhiteSpace(target))
         {
@@ -112,6 +69,9 @@ public static class CodeGeneratorTools
 
         try
         {
+            using var generationWorkspace =
+                GeneratorOutputScope.BeginIsolatedWorkspace();
+
             var normalizedTarget = target.Trim();
 
             if (IsTarget(normalizedTarget, "python"))
@@ -120,7 +80,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -136,7 +96,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -152,7 +112,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -168,7 +128,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -184,7 +144,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -200,7 +160,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -216,7 +176,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -237,8 +197,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite,
-                    outputDirectory
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -259,7 +218,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -291,7 +250,7 @@ public static class CodeGeneratorTools
                     "18.0",
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -311,7 +270,7 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite
+                    overwrite: false
                 );
 
                 return SerializeSuccess(
@@ -364,30 +323,17 @@ public static class CodeGeneratorTools
                 success = true,
                 target,
                 projectName = result.ProjectName,
-                outputDirectory = result.OutputDirectory,
                 files = result.Files,
 
                 downloadUrl = downloadInfo.Url,
                 downloadFileName = downloadInfo.FileName,
-                downloadMethod = downloadInfo.Url is null ? null : "GET",
-                downloadAuthentication = downloadInfo.Url is null
-                    ? null
-                    : "Bearer",
-                downloadTokenEnvironmentVariable = downloadInfo.Url is null
-                    ? null
-                    : "MCP_ACCESS_TOKEN",
-                workspaceRelativeDirectory =
-                    downloadInfo.WorkspaceDirectory,
 
                 message = downloadInfo.Url is null
                     ? message +
-                      " The project was generated on the MCP server, " +
-                      "but no download URL is available. Configure " +
-                      "MCP_PUBLIC_BASE_URL to enable remote downloads."
+                      " Project berhasil dibuat. Download belum tersedia; " +
+                      "hubungi pengelola MCP."
                     : message +
-                      " A ZIP download URL is available. Remote clients " +
-                      "can download the project using the Bearer token " +
-                      "and extract it into the suggested workspace directory."
+                      " Project siap diunduh sebagai ZIP melalui downloadUrl."
             },
             JsonOptions()
         );
@@ -395,8 +341,7 @@ public static class CodeGeneratorTools
 
     private static (
         string? Url,
-        string? FileName,
-        string? WorkspaceDirectory
+        string? FileName
     ) BuildDownloadInfo(GenerationResult result)
     {
         var publicBaseUrl = Environment
@@ -406,7 +351,7 @@ public static class CodeGeneratorTools
 
         if (string.IsNullOrWhiteSpace(publicBaseUrl))
         {
-            return (null, null, null);
+            return (null, null);
         }
 
         if (!Uri.TryCreate(
@@ -414,7 +359,7 @@ public static class CodeGeneratorTools
             UriKind.Absolute,
             out var baseUri))
         {
-            return (null, null, null);
+            return (null, null);
         }
 
         var isSecureScheme =
@@ -426,24 +371,20 @@ public static class CodeGeneratorTools
 
         if (!isSecureScheme && !isLocalHttp)
         {
-            return (null, null, null);
+            return (null, null);
         }
 
         if (!string.IsNullOrEmpty(baseUri.Query) ||
             !string.IsNullOrEmpty(baseUri.Fragment) ||
             !string.IsNullOrEmpty(baseUri.UserInfo))
         {
-            return (null, null, null);
+            return (null, null);
         }
 
         try
         {
-            var generatedRoot = Path.GetFullPath(
-                Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "generated"
-                )
-            );
+            var generatedRoot =
+                GeneratorOutputScope.GetDefaultRoot();
 
             var outputDirectory = Path.GetFullPath(
                 result.OutputDirectory
@@ -465,7 +406,7 @@ public static class CodeGeneratorTools
                     StringComparison.Ordinal
                 ))
             {
-                return (null, null, null);
+                return (null, null);
             }
 
             var segments = relativeDirectory.Split(
@@ -477,31 +418,33 @@ public static class CodeGeneratorTools
                 StringSplitOptions.RemoveEmptyEntries
             );
 
-            if (segments.Length != 2)
+            if (segments.Length != 4 ||
+                !string.Equals(
+                    segments[0],
+                    "requests",
+                    StringComparison.OrdinalIgnoreCase))
             {
-                return (null, null, null);
+                return (null, null);
             }
 
-            var targetDirectory = segments[0];
-            var projectDirectory = segments[1];
+            var requestId = segments[1];
+            var targetDirectory = segments[2];
+            var projectDirectory = segments[3];
 
             var downloadUrl =
                 $"{baseUri.AbsoluteUri.TrimEnd('/')}/downloads/" +
+                $"{Uri.EscapeDataString(requestId)}/" +
                 $"{Uri.EscapeDataString(targetDirectory)}/" +
                 $"{Uri.EscapeDataString(projectDirectory)}";
 
-            var workspaceDirectory =
-                $"generated/{targetDirectory}/{projectDirectory}";
-
             return (
                 downloadUrl,
-                $"{result.ProjectName}.zip",
-                workspaceDirectory
+                $"{result.ProjectName}.zip"
             );
         }
         catch
         {
-            return (null, null, null);
+            return (null, null);
         }
     }
 

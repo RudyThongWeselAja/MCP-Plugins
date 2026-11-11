@@ -1346,8 +1346,7 @@ public sealed class WooCommerceWeselAjaGenerator
         ValidateTemplates();
 
         var safeProjectName = SanitizeProjectName(projectName);
-        var configuredOutputRoot = Environment.GetEnvironmentVariable(
-            "WESELAJA_GENERATOR_OUTPUT_DIR");
+        var configuredOutputRoot = GeneratorOutputScope.GetConfiguredRoot();
 
         var outputRoot = string.IsNullOrWhiteSpace(configuredOutputRoot)
             ? Path.Combine(Directory.GetCurrentDirectory(), "generated")
