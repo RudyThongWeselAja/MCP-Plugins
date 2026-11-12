@@ -5,6 +5,7 @@ namespace WeselAjaMcpServer.Generators;
 public static class GeneratorOutputScope
 {
     private static readonly AsyncLocal<string?> ScopedOutputRoot = new();
+    private static readonly AsyncLocal<string?> ScopedRequestId = new();
 
     public static string? GetConfiguredRoot()
     {
@@ -13,11 +14,15 @@ public static class GeneratorOutputScope
                 "WESELAJA_GENERATOR_OUTPUT_DIR");
     }
 
+    public static string? GetCurrentRequestId()
+    {
+        return ScopedRequestId.Value;
+    }
+
     public static string GetDefaultRoot()
     {
-        var configuredRoot = Environment
-            .GetEnvironmentVariable(
-                "WESELAJA_GENERATOR_OUTPUT_DIR");
+        var configuredRoot = Environment.GetEnvironmentVariable(
+            "WESELAJA_GENERATOR_OUTPUT_DIR");
 
         return Path.GetFullPath(
             string.IsNullOrWhiteSpace(configuredRoot)
@@ -30,25 +35,25 @@ public static class GeneratorOutputScope
     public static IDisposable BeginIsolatedWorkspace()
     {
         var previousRoot = ScopedOutputRoot.Value;
+        var previousRequestId = ScopedRequestId.Value;
+
         var requestId = Guid.NewGuid().ToString("N");
+
+        ScopedRequestId.Value = requestId;
 
         ScopedOutputRoot.Value = Path.Combine(
             GetDefaultRoot(),
             "requests",
             requestId);
 
-        return new Scope(previousRoot);
+        return new Scope(previousRoot, previousRequestId);
     }
 
-    private sealed class Scope : IDisposable
+    private sealed class Scope(
+        string? previousRoot,
+        string? previousRequestId) : IDisposable
     {
-        private readonly string? _previousRoot;
         private bool _disposed;
-
-        public Scope(string? previousRoot)
-        {
-            _previousRoot = previousRoot;
-        }
 
         public void Dispose()
         {
@@ -57,7 +62,9 @@ public static class GeneratorOutputScope
                 return;
             }
 
-            ScopedOutputRoot.Value = _previousRoot;
+            ScopedOutputRoot.Value = previousRoot;
+            ScopedRequestId.Value = previousRequestId;
+
             _disposed = true;
         }
     }

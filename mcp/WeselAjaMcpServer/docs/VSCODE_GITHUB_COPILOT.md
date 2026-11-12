@@ -31,13 +31,14 @@ Cara paling cepat adalah membuka Command Palette (`Ctrl+Shift+P`), menjalankan *
       "password": true
     }
   ],
-  "servers": {
-    "weselaja-generator": {
+  "mcpServers": {
+    "weselaja": {
       "type": "http",
       "url": "https://mcp-plugins-production.up.railway.app/mcp",
       "headers": {
-        "Authorization": "Bearer ${input:weselaja-mcp-token}"
-      }
+        "Authorization": "Bearer ${MCP_ACCESS_TOKEN}"
+      },
+      "tools": ["*"]
     }
   }
 }

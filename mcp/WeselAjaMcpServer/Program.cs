@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using DotNetEnv;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,10 +18,15 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 
+using Npgsql;
+
 using WeselAjaMcp.Configuration;
-using WeselAjaMcpServer.Generators;
 using WeselAjaMcp.Security;
 using WeselAjaMcp.Services;
+
+using WeselAjaMcpServer.Data;
+using WeselAjaMcpServer.Endpoints;
+using WeselAjaMcpServer.Generators;
 
 var envPath = Path.Combine(
     Directory.GetCurrentDirectory(),
@@ -52,6 +58,12 @@ static async Task RunStdioServer(string[] args)
 
     ConfigureWeselAjaServices(builder.Services);
 
+    builder.Services.AddSingleton<
+        IGeneratorRequestRepository,
+        InMemoryGeneratorRequestRepository>();
+
+    builder.Services.AddSingleton<DownloadTicketService>();
+
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
@@ -70,6 +82,43 @@ static async Task RunHttpServer(string[] args)
 
     ConfigureWeselAjaServices(builder.Services);
 
+    var databaseUrl = Environment
+        .GetEnvironmentVariable("DATABASE_URL")
+        ?.Trim();
+
+    if (string.IsNullOrWhiteSpace(databaseUrl))
+    {
+        throw new InvalidOperationException(
+            "DATABASE_URL environment variable is required.");
+    }
+
+    var adminToken = Environment
+        .GetEnvironmentVariable("MCP_ADMIN_TOKEN")
+        ?.Trim();
+
+    if (string.IsNullOrWhiteSpace(adminToken) ||
+        adminToken.Length < 32)
+    {
+        throw new InvalidOperationException(
+            "MCP_ADMIN_TOKEN must contain at least 32 characters.");
+    }
+
+    var connectionString =
+        BuildNpgsqlConnectionString(databaseUrl);
+
+    builder.Services.AddSingleton<NpgsqlDataSource>(
+        _ => NpgsqlDataSource.Create(connectionString));
+
+    builder.Services.AddSingleton<McpDatabase>();
+    builder.Services.AddSingleton<AccessTokenRepository>();
+    builder.Services.AddSingleton<AccessTokenService>();
+
+    builder.Services.AddSingleton<
+        IGeneratorRequestRepository,
+        PostgresGeneratorRequestRepository>();
+
+    builder.Services.AddSingleton<DownloadTicketService>();
+
     builder.Services
         .AddMcpServer()
         .WithHttpTransport(options =>
@@ -81,96 +130,91 @@ static async Task RunHttpServer(string[] args)
 
     var app = builder.Build();
 
-    var accessToken = Environment
-        .GetEnvironmentVariable("MCP_ACCESS_TOKEN")
-        ?.Trim();
+    await app.Services
+        .GetRequiredService<McpDatabase>()
+        .InitializeAsync();
 
-    if (string.IsNullOrWhiteSpace(accessToken))
-    {
-        throw new InvalidOperationException(
-            "MCP_ACCESS_TOKEN environment variable is required."
-        );
-    }
-
-    var expectedTokenBytes =
-        Encoding.UTF8.GetBytes(accessToken);
+    var tokenService = app.Services
+        .GetRequiredService<AccessTokenService>();
 
     app.Use(async (context, next) =>
     {
-        var isProtectedEndpoint =
+        var isAdminEndpoint =
+            context.Request.Path.StartsWithSegments(
+                "/admin",
+                StringComparison.OrdinalIgnoreCase);
+
+        var isMcpEndpoint =
             context.Request.Path.StartsWithSegments(
                 "/mcp",
-                StringComparison.OrdinalIgnoreCase
-            )
-            ||
+                StringComparison.OrdinalIgnoreCase);
+
+        var isDownloadEndpoint =
             context.Request.Path.StartsWithSegments(
                 "/downloads",
-                StringComparison.OrdinalIgnoreCase
-            );
+                StringComparison.OrdinalIgnoreCase);
 
-        if (!isProtectedEndpoint)
+        if (!isAdminEndpoint &&
+            !isMcpEndpoint &&
+            !isDownloadEndpoint)
         {
             await next();
             return;
         }
 
-        const string bearerPrefix = "Bearer ";
-
-        var authorization = context.Request
-            .Headers["Authorization"]
-            .ToString();
-
-        if (!authorization.StartsWith(
-            bearerPrefix,
-            StringComparison.OrdinalIgnoreCase))
+        if (isDownloadEndpoint)
         {
-            context.Response.StatusCode =
-                StatusCodes.Status401Unauthorized;
-
-            context.Response.Headers["WWW-Authenticate"] =
-                "Bearer";
-
-            await context.Response.WriteAsync(
-                "Unauthorized"
-            );
-
+            await next();
             return;
         }
 
-        var providedToken = authorization[
-            bearerPrefix.Length..].Trim();
+        var providedToken = GetBearerToken(context);
 
-        var providedTokenBytes =
-            Encoding.UTF8.GetBytes(providedToken);
-
-        var isValid =
-            providedTokenBytes.Length ==
-                expectedTokenBytes.Length
-            &&
-            CryptographicOperations.FixedTimeEquals(
-                providedTokenBytes,
-                expectedTokenBytes
-            );
-
-        if (!isValid)
+        if (string.IsNullOrWhiteSpace(providedToken))
         {
-            context.Response.StatusCode =
-                StatusCodes.Status401Unauthorized;
-
-            context.Response.Headers["WWW-Authenticate"] =
-                "Bearer";
-
-            await context.Response.WriteAsync(
-                "Unauthorized"
-            );
-
+            await WriteUnauthorized(context);
             return;
         }
 
-        await next();
+        if (isAdminEndpoint)
+        {
+            if (!FixedTimeSecretEquals(
+                providedToken,
+                adminToken))
+            {
+                await WriteUnauthorized(context);
+                return;
+            }
+
+            await next();
+            return;
+        }
+
+        if (!isMcpEndpoint)
+        {
+            await WriteUnauthorized(context);
+            return;
+        }
+
+        var authenticatedUser = await tokenService.ValidateAsync(
+            providedToken,
+            context.RequestAborted);
+
+        if (authenticatedUser is null)
+        {
+            await WriteUnauthorized(context);
+            return;
+        }
+
+        using (AuthenticatedUserScope.Begin(authenticatedUser))
+        {
+            await next();
+        }
     });
 
     app.MapMcp("/mcp");
+
+    app.MapTokenManagementEndpoints();
 
     app.MapGet(
         "/health",
@@ -179,32 +223,181 @@ static async Task RunHttpServer(string[] args)
             success = true,
             service = "WeselAja MCP",
             transport = "Streamable HTTP"
-        })
-    );
+        }));
 
     app.MapGet(
         "/downloads/{requestId}/{target}/{projectName}",
-        DownloadGeneratedProject
-    );
+        DownloadGeneratedProject);
 
-    var httpUrl = (
-        Environment.GetEnvironmentVariable("MCP_HTTP_URL")
-        ?? "http://0.0.0.0:3001"
-    ).Trim();
+    var railwayPort = Environment.GetEnvironmentVariable("PORT");
+
+    var httpUrl = int.TryParse(railwayPort, out var port) && port > 0
+        ? $"http://0.0.0.0:{port}"
+        : (
+            Environment.GetEnvironmentVariable("MCP_HTTP_URL")
+            ?? "http://0.0.0.0:3001"
+        ).Trim();
 
     Console.Error.WriteLine("WeselAja MCP Server");
     Console.Error.WriteLine("Transport : Streamable HTTP");
+
     Console.Error.WriteLine(
-        $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp"
-    );
+        $"Endpoint  : {httpUrl.TrimEnd('/')}/mcp");
+
     Console.Error.WriteLine(
-        $"Health    : {httpUrl.TrimEnd('/')}/health"
-    );
+        $"Health    : {httpUrl.TrimEnd('/')}/health");
+
     Console.Error.WriteLine(
-        $"Downloads : {httpUrl.TrimEnd('/')}/downloads"
-    );
+        $"Downloads : {httpUrl.TrimEnd('/')}/downloads");
+
+    Console.Error.WriteLine(
+        $"Output    : {GeneratorOutputScope.GetDefaultRoot()}");
 
     await app.RunAsync(httpUrl);
+}
+
+static string? GetBearerToken(HttpContext context)
+{
+    const string prefix = "Bearer ";
+
+    var authorization = context.Request
+        .Headers["Authorization"]
+        .ToString();
+
+    if (!authorization.StartsWith(
+        prefix,
+        StringComparison.OrdinalIgnoreCase))
+    {
+        return null;
+    }
+
+    return authorization[prefix.Length..].Trim();
+}
+
+static bool FixedTimeSecretEquals(
+    string provided,
+    string expected)
+{
+    var providedHash = SHA256.HashData(
+        Encoding.UTF8.GetBytes(provided));
+
+    var expectedHash = SHA256.HashData(
+        Encoding.UTF8.GetBytes(expected));
+
+    return CryptographicOperations.FixedTimeEquals(
+        providedHash,
+        expectedHash);
+}
+
+static async Task WriteUnauthorized(
+    HttpContext context)
+{
+    context.Response.StatusCode =
+        StatusCodes.Status401Unauthorized;
+
+    context.Response.Headers["WWW-Authenticate"] =
+        "Bearer";
+
+    context.Response.Headers["Cache-Control"] =
+        "no-store";
+
+    await context.Response.WriteAsync("Unauthorized");
+}
+
+static string BuildNpgsqlConnectionString(string value)
+{
+    value = value.Trim();
+
+    if (!Uri.TryCreate(
+        value,
+        UriKind.Absolute,
+        out var uri))
+    {
+        return new NpgsqlConnectionStringBuilder(value)
+            .ConnectionString;
+    }
+
+    if (uri.Scheme != "postgres" &&
+        uri.Scheme != "postgresql")
+    {
+        throw new InvalidOperationException(
+            "DATABASE_URL must use PostgreSQL.");
+    }
+
+    var userInfo = Uri.UnescapeDataString(uri.UserInfo);
+
+    var separator = userInfo.IndexOf(':');
+
+    if (separator <= 0)
+    {
+        throw new InvalidOperationException(
+            "Invalid PostgreSQL credentials in DATABASE_URL.");
+    }
+
+    var username = userInfo[..separator];
+    var password = userInfo[(separator + 1)..];
+
+    var database = Uri.UnescapeDataString(
+        uri.AbsolutePath.TrimStart('/'));
+
+    if (string.IsNullOrWhiteSpace(database))
+    {
+        throw new InvalidOperationException(
+            "PostgreSQL database name is missing.");
+    }
+
+    var connection = new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+
+        Port = uri.Port > 0
+            ? uri.Port
+            : 5432,
+
+        Database = database,
+        Username = username,
+        Password = password,
+
+        SslMode = SslMode.Prefer,
+
+        Timeout = 15,
+        CommandTimeout = 30
+    };
+
+    var query = uri.Query.TrimStart('?');
+
+    foreach (var item in query.Split(
+        '&',
+        StringSplitOptions.RemoveEmptyEntries))
+    {
+        var parts = item.Split('=', 2);
+
+        var key = Uri.UnescapeDataString(parts[0]);
+
+        var queryValue = parts.Length > 1
+            ? Uri.UnescapeDataString(parts[1])
+            : string.Empty;
+
+        if (key.Equals(
+            "sslmode",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            var normalized = queryValue.Replace(
+                "-",
+                "",
+                StringComparison.Ordinal);
+
+            if (Enum.TryParse<SslMode>(
+                normalized,
+                true,
+                out var sslMode))
+            {
+                connection.SslMode = sslMode;
+            }
+        }
+    }
+
+    return connection.ConnectionString;
 }
 
 static async Task<IResult> DownloadGeneratedProject(
@@ -212,6 +405,9 @@ static async Task<IResult> DownloadGeneratedProject(
     string requestId,
     string target,
     string projectName,
+    IGeneratorRequestRepository requestRepository,
+    AccessTokenService accessTokenService,
+    DownloadTicketService downloadTicketService,
     CancellationToken cancellationToken)
 {
     static bool IsSafeSegment(string value)
@@ -223,9 +419,11 @@ static async Task<IResult> DownloadGeneratedProject(
                 char.IsAsciiLetterOrDigit(c)
                 || c == '-'
                 || c == '_'
-                || c == '.'
-            );
+                || c == '.');
     }
+
+    context.Response.Headers["Cache-Control"] = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
 
     if (!IsSafeSegment(requestId) ||
         !IsSafeSegment(target) ||
@@ -235,6 +433,60 @@ static async Task<IResult> DownloadGeneratedProject(
         {
             success = false,
             message = "Invalid download request."
+        });
+    }
+
+    if (!Guid.TryParseExact(requestId, "N", out var requestGuid))
+    {
+        return Results.NotFound(new
+        {
+            success = false,
+            message = "Generated project not found."
+        });
+    }
+
+    var ticket = context.Request.Query["ticket"].ToString();
+
+    var isTicketDownload =
+        !string.IsNullOrWhiteSpace(ticket);
+
+    var authorized = false;
+
+    if (isTicketDownload)
+    {
+        authorized = await downloadTicketService.ValidateAsync(
+            ticket,
+            requestGuid,
+            target,
+            projectName,
+            cancellationToken);
+    }
+    else
+    {
+        var bearerToken = GetBearerToken(context);
+
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+        {
+            var user = await accessTokenService.ValidateAsync(
+                bearerToken,
+                cancellationToken);
+
+            if (user is not null)
+            {
+                authorized = await requestRepository.IsOwnedAsync(
+                    requestGuid,
+                    user.UserId,
+                    cancellationToken);
+            }
+        }
+    }
+
+    if (!authorized)
+    {
+        return Results.NotFound(new
+        {
+            success = false,
+            message = "Generated project not found."
         });
     }
 
@@ -254,16 +506,17 @@ static async Task<IResult> DownloadGeneratedProject(
         Path.Combine(
             generatedRoot,
             "requests",
-            requestId)
-    );
+            requestId));
 
     var targetDirectory = Path.GetFullPath(
-        Path.Combine(requestDirectory, target)
-    );
+        Path.Combine(
+            requestDirectory,
+            target));
 
     var projectDirectory = Path.GetFullPath(
-        Path.Combine(targetDirectory, projectName)
-    );
+        Path.Combine(
+            targetDirectory,
+            projectName));
 
     var comparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase
@@ -330,8 +583,7 @@ static async Task<IResult> DownloadGeneratedProject(
         .EnumerateFiles(
             projectDirectory,
             "*",
-            enumerationOptions
-        )
+            enumerationOptions)
         .Where(file =>
         {
             var name = Path.GetFileName(file);
@@ -358,13 +610,11 @@ static async Task<IResult> DownloadGeneratedProject(
 
             var relativePath = Path.GetRelativePath(
                 projectDirectory,
-                file
-            );
+                file);
 
             var segments = relativePath.Split(
                 Path.DirectorySeparatorChar,
-                Path.AltDirectorySeparatorChar
-            );
+                Path.AltDirectorySeparatorChar);
 
             if (segments.Any(segment =>
                 string.Equals(
@@ -394,8 +644,7 @@ static async Task<IResult> DownloadGeneratedProject(
     if (files.Count > maxFiles)
     {
         return Results.StatusCode(
-            StatusCodes.Status413PayloadTooLarge
-        );
+            StatusCodes.Status413PayloadTooLarge);
     }
 
     long totalBytes = 0;
@@ -407,8 +656,7 @@ static async Task<IResult> DownloadGeneratedProject(
         if (fileSize > maxTotalBytes - totalBytes)
         {
             return Results.StatusCode(
-                StatusCodes.Status413PayloadTooLarge
-            );
+                StatusCodes.Status413PayloadTooLarge);
         }
 
         totalBytes += fileSize;
@@ -440,8 +688,7 @@ static async Task<IResult> DownloadGeneratedProject(
 
                 var entry = archive.CreateEntry(
                     relativePath,
-                    CompressionLevel.Fastest
-                );
+                    CompressionLevel.Fastest);
 
                 await using var input = new FileStream(
                     file,
@@ -449,27 +696,43 @@ static async Task<IResult> DownloadGeneratedProject(
                     FileAccess.Read,
                     FileShare.Read,
                     81920,
-                    useAsync: true
-                );
+                    useAsync: true);
 
                 await using var output = entry.Open();
 
                 await input.CopyToAsync(
                     output,
-                    cancellationToken
-                );
+                    cancellationToken);
+            }
+        }
+
+        if (isTicketDownload)
+        {
+            var consumed = await downloadTicketService.ConsumeAsync(
+                ticket,
+                requestGuid,
+                target,
+                projectName,
+                cancellationToken);
+
+            if (!consumed)
+            {
+                await memoryStream.DisposeAsync();
+
+                return Results.NotFound(new
+                {
+                    success = false,
+                    message = "Download ticket is invalid, expired, or already used."
+                });
             }
         }
 
         memoryStream.Position = 0;
 
-        context.Response.Headers.CacheControl = "no-store";
-
         return Results.File(
             memoryStream,
             "application/zip",
-            $"{projectName}.zip"
-        );
+            $"{projectName}.zip");
     }
     catch
     {
@@ -489,8 +752,7 @@ static void ConfigureWeselAjaServices(
         Enabled = !string.Equals(
             enabledValue?.Trim(),
             "false",
-            StringComparison.OrdinalIgnoreCase
-        ),
+            StringComparison.OrdinalIgnoreCase),
 
         Title = (
             Environment.GetEnvironmentVariable("XENITH_TITLE")

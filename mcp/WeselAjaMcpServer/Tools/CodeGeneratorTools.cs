@@ -1,4 +1,3 @@
-
 using System;
 using System.ComponentModel;
 using System.IO;
@@ -6,7 +5,9 @@ using System.Linq;
 using System.Text.Json;
 
 using ModelContextProtocol.Server;
+using WeselAjaMcpServer.Data;
 using WeselAjaMcpServer.Generators;
+using WeselAjaMcp.Security;
 
 namespace WeselAjaMcpServer.Tools;
 
@@ -25,7 +26,7 @@ public static class CodeGeneratorTools
         "android-kotlin",
         "shopify",
         "odoo",
-        "woocommerce",
+        "woocommerce"
     ];
 
     [McpServerTool(Name = "generate_weselaja_integration")]
@@ -38,7 +39,10 @@ public static class CodeGeneratorTools
         "project name can be used safely by different users. On success, return the download " +
         "URL and tell the user the project is ready to download."
     )]
-    public static string GenerateWeselAjaIntegration(
+    public static async Task<string> GenerateWeselAjaIntegration(
+        IGeneratorRequestRepository requestRepository,
+        DownloadTicketService downloadTicketService,
+
         [Description(
             "Target platform. Supported values: python, csharp, go, php, javascript, " +
             "typescript, java, android-kotlin, shopify, odoo, woocommerce. " +
@@ -64,7 +68,9 @@ public static class CodeGeneratorTools
     {
         if (string.IsNullOrWhiteSpace(target))
         {
-            return SerializeError("Target is required.", SupportedTargets);
+            return SerializeError(
+                "Target is required.",
+                SupportedTargets);
         }
 
         try
@@ -80,14 +86,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "python",
-                    "WeselAja Python integration project generated successfully."
-                );
+                    "WeselAja Python integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "csharp", "c#", "dotnet"))
@@ -96,14 +102,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "csharp",
-                    "WeselAja C# integration project generated successfully."
-                );
+                    "WeselAja C# integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "php"))
@@ -112,14 +118,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "php",
-                    "WeselAja PHP integration project generated successfully."
-                );
+                    "WeselAja PHP integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "go", "golang"))
@@ -128,14 +134,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "go",
-                    "WeselAja Go integration project generated successfully."
-                );
+                    "WeselAja Go integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "javascript", "js"))
@@ -144,14 +150,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "javascript",
-                    "WeselAja JavaScript integration project generated successfully."
-                );
+                    "WeselAja JavaScript integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "typescript", "ts"))
@@ -160,14 +166,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "typescript",
-                    "WeselAja TypeScript integration project generated successfully."
-                );
+                    "WeselAja TypeScript integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "java"))
@@ -176,14 +182,14 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "java",
-                    "WeselAja Java integration project generated successfully."
-                );
+                    "WeselAja Java integration project generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(
@@ -197,10 +203,9 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "android-kotlin",
                     "WeselAja Android Kotlin Direct Payin integration generated successfully. " +
@@ -208,8 +213,9 @@ public static class CodeGeneratorTools
                     "Retrofit and OkHttp, includes a payment form and optional checkout WebView, " +
                     "and does not require an application backend. Configure sandbox credentials " +
                     "and merchant settings before testing. Do not distribute an APK containing " +
-                    "production API secrets."
-                );
+                    "production API secrets.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "shopify", "shopify-app"))
@@ -218,17 +224,17 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "shopify",
                     $"WeselAja Shopify application generated successfully. " +
                     $"Generator version: {ShopifyWeselAjaGenerator.GeneratorVersion}. " +
                     "Link the app using Shopify CLI, configure sandbox credentials, " +
-                    "initialize Prisma, and run the generated tests before testing payments."
-                );
+                    "initialize Prisma, and run the generated tests before testing payments.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(normalizedTarget, "odoo"))
@@ -241,8 +247,7 @@ public static class CodeGeneratorTools
                     return SerializeError(
                         $"Unsupported Odoo version '{odooVersion}'. " +
                         "Only Odoo 18.0 is supported.",
-                        SupportedTargets
-                    );
+                        SupportedTargets);
                 }
 
                 var result = new OdooWeselAjaGenerator().Generate(
@@ -250,14 +255,14 @@ public static class CodeGeneratorTools
                     "18.0",
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "odoo",
-                    "WeselAja Odoo 18.0 payment provider module generated successfully."
-                );
+                    "WeselAja Odoo 18.0 payment provider module generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             if (IsTarget(
@@ -270,20 +275,19 @@ public static class CodeGeneratorTools
                     projectName,
                     includeExample,
                     includeTests,
-                    overwrite: false
-                );
+                    overwrite: false);
 
-                return SerializeSuccess(
+                return await SerializeSuccessAsync(
                     result,
                     "woocommerce",
-                    "WeselAja WooCommerce payment plugin generated successfully."
-                );
+                    "WeselAja WooCommerce payment plugin generated successfully.",
+                    requestRepository,
+                    downloadTicketService);
             }
 
             return SerializeError(
                 $"Unsupported target '{target}'.",
-                SupportedTargets
-            );
+                SupportedTargets);
         }
         catch (Exception exception)
         {
@@ -293,9 +297,67 @@ public static class CodeGeneratorTools
                     success = false,
                     error = exception.Message
                 },
-                JsonOptions()
-            );
+                JsonOptions());
         }
+    }
+
+    private static async Task<string> SerializeSuccessAsync(
+        GenerationResult result,
+        string target,
+        string message,
+        IGeneratorRequestRepository requestRepository,
+        DownloadTicketService downloadTicketService)
+    {
+        var userId = AuthenticatedUserScope.GetUserId();
+
+        var isHttp = string.Equals(
+            Environment.GetEnvironmentVariable("MCP_TRANSPORT")?.Trim(),
+            "http",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (isHttp && !userId.HasValue)
+        {
+            throw new InvalidOperationException(
+                "Authenticated user context is missing.");
+        }
+
+        (string? Url, string? FileName) downloadInfo = (null, null);
+
+        if (userId.HasValue)
+        {
+            var requestIdValue =
+                GeneratorOutputScope.GetCurrentRequestId();
+
+            if (!Guid.TryParseExact(
+                requestIdValue,
+                "N",
+                out var requestId))
+            {
+                throw new InvalidOperationException(
+                    "Generator request ID is invalid.");
+            }
+
+            await requestRepository.RegisterAsync(
+                requestId,
+                userId.Value,
+                target,
+                result.ProjectName);
+
+            var ticket = await downloadTicketService.CreateAsync(
+                requestId,
+                userId.Value);
+
+            downloadInfo = BuildDownloadInfo(
+                result,
+                target,
+                ticket.Token);
+        }
+
+        return SerializeSuccess(
+            result,
+            target,
+            message,
+            downloadInfo);
     }
 
     private static bool IsTarget(
@@ -306,17 +368,15 @@ public static class CodeGeneratorTools
             string.Equals(
                 target,
                 alias,
-                StringComparison.OrdinalIgnoreCase
-            ));
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static string SerializeSuccess(
         GenerationResult result,
         string target,
-        string message)
+        string message,
+        (string? Url, string? FileName) downloadInfo)
     {
-        var downloadInfo = BuildDownloadInfo(result);
-
         return JsonSerializer.Serialize(
             new
             {
@@ -324,10 +384,8 @@ public static class CodeGeneratorTools
                 target,
                 projectName = result.ProjectName,
                 files = result.Files,
-
                 downloadUrl = downloadInfo.Url,
                 downloadFileName = downloadInfo.FileName,
-
                 message = downloadInfo.Url is null
                     ? message +
                       " Project berhasil dibuat. Download belum tersedia; " +
@@ -335,14 +393,16 @@ public static class CodeGeneratorTools
                     : message +
                       " Project siap diunduh sebagai ZIP melalui downloadUrl."
             },
-            JsonOptions()
-        );
+            JsonOptions());
     }
 
     private static (
         string? Url,
         string? FileName
-    ) BuildDownloadInfo(GenerationResult result)
+    ) BuildDownloadInfo(
+        GenerationResult result,
+        string target,
+        string ticket)
     {
         var publicBaseUrl = Environment
             .GetEnvironmentVariable("MCP_PUBLIC_BASE_URL")
@@ -387,24 +447,20 @@ public static class CodeGeneratorTools
                 GeneratorOutputScope.GetDefaultRoot();
 
             var outputDirectory = Path.GetFullPath(
-                result.OutputDirectory
-            );
+                result.OutputDirectory);
 
             var relativeDirectory = Path.GetRelativePath(
                 generatedRoot,
-                outputDirectory
-            );
+                outputDirectory);
 
             if (Path.IsPathRooted(relativeDirectory) ||
                 relativeDirectory == ".." ||
                 relativeDirectory.StartsWith(
                     ".." + Path.DirectorySeparatorChar,
-                    StringComparison.Ordinal
-                ) ||
+                    StringComparison.Ordinal) ||
                 relativeDirectory.StartsWith(
                     ".." + Path.AltDirectorySeparatorChar,
-                    StringComparison.Ordinal
-                ))
+                    StringComparison.Ordinal))
             {
                 return (null, null);
             }
@@ -415,13 +471,16 @@ public static class CodeGeneratorTools
                     Path.DirectorySeparatorChar,
                     Path.AltDirectorySeparatorChar
                 },
-                StringSplitOptions.RemoveEmptyEntries
-            );
+                StringSplitOptions.RemoveEmptyEntries);
 
             if (segments.Length != 4 ||
                 !string.Equals(
                     segments[0],
                     "requests",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    segments[2],
+                    target,
                     StringComparison.OrdinalIgnoreCase))
             {
                 return (null, null);
@@ -435,12 +494,12 @@ public static class CodeGeneratorTools
                 $"{baseUri.AbsoluteUri.TrimEnd('/')}/downloads/" +
                 $"{Uri.EscapeDataString(requestId)}/" +
                 $"{Uri.EscapeDataString(targetDirectory)}/" +
-                $"{Uri.EscapeDataString(projectDirectory)}";
+                $"{Uri.EscapeDataString(projectDirectory)}" +
+                $"?ticket={Uri.EscapeDataString(ticket)}";
 
             return (
                 downloadUrl,
-                $"{result.ProjectName}.zip"
-            );
+                $"{result.ProjectName}.zip");
         }
         catch
         {
@@ -459,8 +518,7 @@ public static class CodeGeneratorTools
                 error,
                 supportedTargets
             },
-            JsonOptions()
-        );
+            JsonOptions());
     }
 
     private static JsonSerializerOptions JsonOptions()
