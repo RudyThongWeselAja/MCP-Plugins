@@ -36,7 +36,7 @@ Cara paling cepat adalah membuka Command Palette (`Ctrl+Shift+P`), menjalankan *
       "type": "http",
       "url": "https://mcp-plugins-production.up.railway.app/mcp",
       "headers": {
-        "Authorization": "Bearer ${MCP_ACCESS_TOKEN}"
+        "Authorization": "Bearer ${input:weselaja-mcp-token}"
       },
       "tools": ["*"]
     }
@@ -85,7 +85,7 @@ Setelah file berada di workspace, buka README proyek hasil generate, isi `.env` 
 
 ## Pengelolaan token
 
-Deployment saat ini memeriksa satu nilai `MCP_ACCESS_TOKEN` yang disetel pada server. Pengelola memberikan token tersebut kepada pengguna; URL saja tidak memberikan akses. Perlakukan token sebagai rahasia, jangan menaruhnya di prompt Copilot, source control, atau tangkapan layar. Karena implementasi saat ini memakai satu token bersama, token itu belum dapat dicabut hanya untuk satu pengguna. Untuk uji coba terbatas, bagikan hanya kepada pengguna yang dipercaya; sebelum distribusi luas, siapkan autentikasi dan pencabutan akses per pengguna.
+Setiap pengguna menerima access token individual berawalan `wja_`; URL saja tidak memberikan akses MCP. Server menyimpan hash token, bukan token mentah. Pengelola dapat mencabut token satu customer tanpa memengaruhi customer lain; pencabutan tersebut juga membatalkan ticket download yang diterbitkan token itu. Perlakukan token sebagai rahasia: jangan menaruhnya di prompt Copilot, source control, atau tangkapan layar.
 
 ## Dokumentasi resmi
 

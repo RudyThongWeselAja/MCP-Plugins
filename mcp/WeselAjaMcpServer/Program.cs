@@ -1,7 +1,6 @@
 
 using System;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -27,6 +26,7 @@ using WeselAjaMcp.Services;
 using WeselAjaMcpServer.Data;
 using WeselAjaMcpServer.Endpoints;
 using WeselAjaMcpServer.Generators;
+using WeselAjaMcpServer.Services;
 
 var envPath = Path.Combine(
     Directory.GetCurrentDirectory(),
@@ -63,6 +63,7 @@ static async Task RunStdioServer(string[] args)
         InMemoryGeneratorRequestRepository>();
 
     builder.Services.AddSingleton<DownloadTicketService>();
+    builder.Services.AddHostedService<GeneratorArtifactCleanupService>();
 
     builder.Services
         .AddMcpServer()
@@ -224,6 +225,21 @@ static async Task RunHttpServer(string[] args)
             service = "WeselAja MCP",
             transport = "Streamable HTTP"
         }));
+
+    app.MapGet(
+        "/ready",
+        async (NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+        {
+            await using var connection = await dataSource.OpenConnectionAsync(
+                cancellationToken);
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1;";
+
+            await command.ExecuteScalarAsync(cancellationToken);
+
+            return Results.Ok(new { success = true });
+        });
 
     app.MapGet(
         "/downloads/{requestId}/{target}/{projectName}",
@@ -452,16 +468,7 @@ static async Task<IResult> DownloadGeneratedProject(
 
     var authorized = false;
 
-    if (isTicketDownload)
-    {
-        authorized = await downloadTicketService.ValidateAsync(
-            ticket,
-            requestGuid,
-            target,
-            projectName,
-            cancellationToken);
-    }
-    else
+    if (!isTicketDownload)
     {
         var bearerToken = GetBearerToken(context);
 
@@ -481,7 +488,7 @@ static async Task<IResult> DownloadGeneratedProject(
         }
     }
 
-    if (!authorized)
+    if (!isTicketDownload && !authorized)
     {
         return Results.NotFound(new
         {
@@ -662,83 +669,29 @@ static async Task<IResult> DownloadGeneratedProject(
         totalBytes += fileSize;
     }
 
-    var memoryStream = new MemoryStream();
-
-    try
+    if (isTicketDownload)
     {
-        using (var archive = new ZipArchive(
-            memoryStream,
-            ZipArchiveMode.Create,
-            leaveOpen: true))
+        var consumed = await downloadTicketService.ConsumeAsync(
+            ticket,
+            requestGuid,
+            target,
+            projectName,
+            cancellationToken);
+
+        if (!consumed)
         {
-            foreach (var file in files)
+            return Results.NotFound(new
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var relativePath = Path
-                    .GetRelativePath(projectDirectory, file)
-                    .Replace('\\', '/');
-
-                if (Path.IsPathRooted(relativePath) ||
-                    relativePath.Split('/').Any(segment =>
-                        segment == ".."))
-                {
-                    continue;
-                }
-
-                var entry = archive.CreateEntry(
-                    relativePath,
-                    CompressionLevel.Fastest);
-
-                await using var input = new FileStream(
-                    file,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    81920,
-                    useAsync: true);
-
-                await using var output = entry.Open();
-
-                await input.CopyToAsync(
-                    output,
-                    cancellationToken);
-            }
+                success = false,
+                message = "Download ticket is invalid, expired, or already used."
+            });
         }
-
-        if (isTicketDownload)
-        {
-            var consumed = await downloadTicketService.ConsumeAsync(
-                ticket,
-                requestGuid,
-                target,
-                projectName,
-                cancellationToken);
-
-            if (!consumed)
-            {
-                await memoryStream.DisposeAsync();
-
-                return Results.NotFound(new
-                {
-                    success = false,
-                    message = "Download ticket is invalid, expired, or already used."
-                });
-            }
-        }
-
-        memoryStream.Position = 0;
-
-        return Results.File(
-            memoryStream,
-            "application/zip",
-            $"{projectName}.zip");
     }
-    catch
-    {
-        await memoryStream.DisposeAsync();
-        throw;
-    }
+
+    return new StreamingZipResult(
+        projectDirectory,
+        files,
+        $"{projectName}.zip");
 }
 
 static void ConfigureWeselAjaServices(

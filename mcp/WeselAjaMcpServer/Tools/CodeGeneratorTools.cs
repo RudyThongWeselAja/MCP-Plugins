@@ -14,6 +14,10 @@ namespace WeselAjaMcpServer.Tools;
 [McpServerToolType]
 public static class CodeGeneratorTools
 {
+    private static readonly SemaphoreSlim GenerationGate = new(
+        GetMaxConcurrentGenerations(),
+        GetMaxConcurrentGenerations());
+
     private static readonly string[] SupportedTargets =
     [
         "python",
@@ -75,6 +79,10 @@ public static class CodeGeneratorTools
 
         try
         {
+            await GenerationGate.WaitAsync();
+
+            try
+            {
             using var generationWorkspace =
                 GeneratorOutputScope.BeginIsolatedWorkspace();
 
@@ -288,6 +296,11 @@ public static class CodeGeneratorTools
             return SerializeError(
                 $"Unsupported target '{target}'.",
                 SupportedTargets);
+            }
+            finally
+            {
+                GenerationGate.Release();
+            }
         }
         catch (Exception exception)
         {
@@ -383,7 +396,7 @@ public static class CodeGeneratorTools
                 success = true,
                 target,
                 projectName = result.ProjectName,
-                files = result.Files,
+                fileCount = result.Files.Count,
                 downloadUrl = downloadInfo.Url,
                 downloadFileName = downloadInfo.FileName,
                 message = downloadInfo.Url is null
@@ -527,5 +540,17 @@ public static class CodeGeneratorTools
         {
             WriteIndented = true
         };
+    }
+
+    private static int GetMaxConcurrentGenerations()
+    {
+        const int defaultLimit = 2;
+
+        var configured = Environment.GetEnvironmentVariable(
+            "WESELAJA_GENERATOR_MAX_CONCURRENCY");
+
+        return int.TryParse(configured, out var limit)
+            ? Math.Clamp(limit, 1, 16)
+            : defaultLimit;
     }
 }
