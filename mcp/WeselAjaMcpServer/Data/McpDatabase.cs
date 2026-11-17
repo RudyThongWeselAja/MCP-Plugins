@@ -62,7 +62,9 @@ public sealed class McpDatabase(NpgsqlDataSource dataSource)
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 expires_at TIMESTAMPTZ NOT NULL,
                 revoked_at TIMESTAMPTZ NULL,
-                used_at TIMESTAMPTZ NULL
+                used_at TIMESTAMPTZ NULL,
+                download_started_at TIMESTAMPTZ NULL,
+                download_reservation_id UUID NULL
             );
 
             ALTER TABLE mcp_download_tickets
@@ -72,6 +74,12 @@ public sealed class McpDatabase(NpgsqlDataSource dataSource)
 
             ALTER TABLE mcp_download_tickets
                 ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ NULL;
+
+            ALTER TABLE mcp_download_tickets
+                ADD COLUMN IF NOT EXISTS download_started_at TIMESTAMPTZ NULL;
+
+            ALTER TABLE mcp_download_tickets
+                ADD COLUMN IF NOT EXISTS download_reservation_id UUID NULL;
 
             DELETE FROM mcp_download_tickets
             WHERE token_id IS NULL;

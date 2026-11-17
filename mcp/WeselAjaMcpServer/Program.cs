@@ -467,25 +467,28 @@ static async Task<IResult> DownloadGeneratedProject(
         !string.IsNullOrWhiteSpace(ticket);
 
     var authorized = false;
+    var bearerToken = GetBearerToken(context);
 
-    if (!isTicketDownload)
+    if (!string.IsNullOrWhiteSpace(bearerToken))
     {
-        var bearerToken = GetBearerToken(context);
+        var user = await accessTokenService.ValidateAsync(
+            bearerToken,
+            cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(bearerToken))
+        if (user is not null)
         {
-            var user = await accessTokenService.ValidateAsync(
-                bearerToken,
+            authorized = await requestRepository.IsOwnedAsync(
+                requestGuid,
+                user.UserId,
                 cancellationToken);
-
-            if (user is not null)
-            {
-                authorized = await requestRepository.IsOwnedAsync(
-                    requestGuid,
-                    user.UserId,
-                    cancellationToken);
-            }
         }
+    }
+
+    // A valid owner token permits retrying a download even if an old URL
+    // contains a ticket that has already been consumed.
+    if (authorized)
+    {
+        isTicketDownload = false;
     }
 
     if (!isTicketDownload && !authorized)
@@ -671,14 +674,14 @@ static async Task<IResult> DownloadGeneratedProject(
 
     if (isTicketDownload)
     {
-        var consumed = await downloadTicketService.ConsumeAsync(
+        var reservation = await downloadTicketService.TryReserveAsync(
             ticket,
             requestGuid,
             target,
             projectName,
             cancellationToken);
 
-        if (!consumed)
+        if (reservation is null)
         {
             return Results.NotFound(new
             {
@@ -686,6 +689,13 @@ static async Task<IResult> DownloadGeneratedProject(
                 message = "Download ticket is invalid, expired, or already used."
             });
         }
+
+        return new StreamingZipResult(
+            projectDirectory,
+            files,
+            $"{projectName}.zip",
+            () => downloadTicketService.CompleteAsync(reservation),
+            () => downloadTicketService.ReleaseAsync(reservation));
     }
 
     return new StreamingZipResult(

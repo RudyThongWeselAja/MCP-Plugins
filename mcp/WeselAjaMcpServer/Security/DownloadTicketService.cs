@@ -69,7 +69,7 @@ public sealed class DownloadTicketService(
             cancellationToken);
     }
 
-    public Task<bool> ConsumeAsync(
+    public async Task<DownloadTicketReservation?> TryReserveAsync(
         string ticket,
         Guid requestId,
         string target,
@@ -78,15 +78,42 @@ public sealed class DownloadTicketService(
     {
         if (!IsValidFormat(ticket))
         {
-            return Task.FromResult(false);
+            return null;
         }
 
-        return repository.ConsumeDownloadTicketAsync(
+        var reservationId = await repository.TryReserveDownloadTicketAsync(
             HashTicket(ticket),
             requestId,
             target,
             projectName,
             cancellationToken);
+
+        return reservationId.HasValue
+            ? new DownloadTicketReservation(
+                HashTicket(ticket),
+                requestId,
+                reservationId.Value)
+            : null;
+    }
+
+    public Task<bool> CompleteAsync(
+        DownloadTicketReservation reservation)
+    {
+        return repository.CompleteDownloadTicketAsync(
+            reservation.TicketHash,
+            reservation.RequestId,
+            reservation.ReservationId,
+            CancellationToken.None);
+    }
+
+    public Task ReleaseAsync(
+        DownloadTicketReservation reservation)
+    {
+        return repository.ReleaseDownloadTicketAsync(
+            reservation.TicketHash,
+            reservation.RequestId,
+            reservation.ReservationId,
+            CancellationToken.None);
     }
 
     private static bool IsValidFormat(string ticket)
@@ -111,3 +138,8 @@ public sealed record IssuedDownloadTicket(
     string Token,
     DateTime ExpiresAtUtc
 );
+
+public sealed record DownloadTicketReservation(
+    string TicketHash,
+    Guid RequestId,
+    Guid ReservationId);

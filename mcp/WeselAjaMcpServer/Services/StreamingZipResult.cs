@@ -11,7 +11,9 @@ namespace WeselAjaMcpServer.Services;
 public sealed class StreamingZipResult(
     string projectDirectory,
     IReadOnlyList<string> files,
-    string downloadFileName) : IResult
+    string downloadFileName,
+    Func<Task<bool>>? completeTicket = null,
+    Func<Task>? releaseTicket = null) : IResult
 {
     public async Task ExecuteAsync(HttpContext context)
     {
@@ -19,42 +21,61 @@ public sealed class StreamingZipResult(
         context.Response.Headers.ContentDisposition =
             $"attachment; filename=\"{downloadFileName}\"";
 
-        using var archive = new ZipArchive(
-            context.Response.Body,
-            ZipArchiveMode.Create,
-            leaveOpen: true);
-
-        foreach (var file in files)
+        try
         {
-            context.RequestAborted.ThrowIfCancellationRequested();
-
-            var relativePath = Path
-                .GetRelativePath(projectDirectory, file)
-                .Replace('\\', '/');
-
-            if (Path.IsPathRooted(relativePath) ||
-                relativePath.Split('/').Any(segment => segment == ".."))
+            using (var archive = new ZipArchive(
+                context.Response.Body,
+                ZipArchiveMode.Create,
+                leaveOpen: true))
             {
-                continue;
+                foreach (var file in files)
+                {
+                    context.RequestAborted.ThrowIfCancellationRequested();
+
+                    var relativePath = Path
+                        .GetRelativePath(projectDirectory, file)
+                        .Replace('\\', '/');
+
+                    if (Path.IsPathRooted(relativePath) ||
+                        relativePath.Split('/').Any(segment => segment == ".."))
+                    {
+                        continue;
+                    }
+
+                    var entry = archive.CreateEntry(
+                        relativePath,
+                        CompressionLevel.Fastest);
+
+                    await using var input = new FileStream(
+                        file,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        bufferSize: 81920,
+                        useAsync: true);
+
+                    await using var output = entry.Open();
+
+                    await input.CopyToAsync(
+                        output,
+                        context.RequestAborted);
+                }
             }
 
-            var entry = archive.CreateEntry(
-                relativePath,
-                CompressionLevel.Fastest);
+            if (completeTicket is not null && !await completeTicket())
+            {
+                throw new InvalidOperationException(
+                    "Download ticket could not be completed.");
+            }
+        }
+        catch
+        {
+            if (releaseTicket is not null)
+            {
+                await releaseTicket();
+            }
 
-            await using var input = new FileStream(
-                file,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 81920,
-                useAsync: true);
-
-            await using var output = entry.Open();
-
-            await input.CopyToAsync(
-                output,
-                context.RequestAborted);
+            throw;
         }
     }
 }
