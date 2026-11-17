@@ -21,6 +21,10 @@ public sealed class StreamingZipResult(
         context.Response.Headers.ContentDisposition =
             $"attachment; filename=\"{downloadFileName}\"";
 
+        // Start the chunked response before ZIP work begins. This prevents a
+        // reverse proxy from holding a small generated project in its buffer.
+        await context.Response.StartAsync(context.RequestAborted);
+
         try
         {
             using (var archive = new ZipArchive(
@@ -58,6 +62,12 @@ public sealed class StreamingZipResult(
 
                     await input.CopyToAsync(
                         output,
+                        context.RequestAborted);
+
+                    await output.FlushAsync(
+                        context.RequestAborted);
+
+                    await context.Response.Body.FlushAsync(
                         context.RequestAborted);
                 }
             }
